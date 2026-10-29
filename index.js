@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { normalizeConfig } from './lib/config.js'
 import { registerApiRoutes } from './lib/http.js'
 import { createSyncRuntime } from './lib/sync.js'
@@ -7,7 +10,39 @@ export { normalizeConfig }
 export const name = 'dsh-plugin-sync'
 export const inject = ['tools', 'pluginManager']
 
-const ACTIONS = new Set(['status', 'preview', 'apply', 'push', 'log'])
+const ACTIONS = new Set(['status', 'preview', 'apply', 'latest', 'push', 'log'])
+
+/**
+ * Locate the runtime directory that holds this DSH's bundled node and pnpm.
+ *
+ * The manual-update command should work when pasted as-is, so it points at the
+ * exact binaries DSH itself uses rather than assuming a global `pnpm` on PATH.
+ * Candidate order: DSH_PACK_HOME, then walking up from this module's real path
+ * (profile → <dsh home>/dsh-runtimes/<runtime>).
+ */
+function resolvePackHome() {
+  const explicit = process.env.DSH_PACK_HOME
+  if (typeof explicit === 'string' && explicit.trim() !== '') return explicit.trim()
+  let current
+  try {
+    current = dirname(fileURLToPath(import.meta.url))
+  } catch {
+    return ''
+  }
+  for (let depth = 0; depth < 8; depth += 1) {
+    const candidate = join(current, 'dependencies', 'pnpm', 'bin', 'pnpm.cjs')
+    if (existsSync(candidate)) return current
+    const nested = join(current, 'dsh-runtimes')
+    if (existsSync(nested)) {
+      const primary = join(nested, 'dsh-primary-runtime')
+      if (existsSync(join(primary, 'dependencies', 'pnpm', 'bin', 'pnpm.cjs'))) return primary
+    }
+    const parent = resolve(current, '..')
+    if (parent === current) break
+    current = parent
+  }
+  return ''
+}
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -108,6 +143,27 @@ export function renderToolResult(_args, value) {
     for (const item of value.failed.slice(0, 12)) {
       lines.push(`  ! ${item.name}: ${item.error ?? item.message ?? summarizeError(item)}`)
     }
+    for (const item of value.failed.filter((entry) => entry.manual !== undefined).slice(0, 4)) {
+      lines.push(`  Manual update for ${item.name}:`)
+      for (const step of item.manual.steps ?? []) {
+        if (typeof step.command === 'string' && step.command !== '') lines.push(`    ${step.command}`)
+      }
+    }
+  }
+  if (isRecord(value.counts) && Array.isArray(value.entries) && value.action === 'latest') {
+    lines.push(
+      `Latest check: ${value.counts.outdated} outdated, ${value.counts.current} current, `
+      + `${value.counts.unsupported} not checkable`,
+    )
+    for (const entry of value.entries.filter((item) => item.outdated === true).slice(0, 15)) {
+      lines.push(`  ^ ${entry.name}: ${entry.local?.version ?? '?'} -> ${entry.latest}`)
+    }
+  }
+  if (Array.isArray(value.updatedList) && value.updatedList.length > 0) {
+    lines.push(`Updated: ${value.updatedList.length}`)
+    for (const item of value.updatedList.slice(0, 12)) {
+      lines.push(`  ^ ${item.name}: ${item.replaced ?? ''} -> ${item.version ?? item.latest ?? ''}`)
+    }
   }
   if (typeof value.status === 'string' && value.action === 'push') {
     lines.push(`Push: ${value.status}${value.version ? ` (${shortSha(value.version)})` : ''}`)
@@ -130,7 +186,10 @@ export function renderToolResult(_args, value) {
 }
 
 export function apply(ctx, rawConfig) {
-  const config = normalizeConfig(rawConfig)
+  const config = normalizeConfig({
+    ...rawConfig,
+    packHome: resolvePackHome(),
+  })
   const runtime = createSyncRuntime({
     config,
     pluginManager: ctx.pluginManager,
@@ -156,11 +215,16 @@ export function apply(ctx, rawConfig) {
         action: {
           type: 'string',
           enum: [...ACTIONS],
-          description: 'status, preview, apply, push, or log.',
+          description: 'status, preview, apply, latest, push, or log.',
         },
         previewId: {
           type: 'string',
           description: 'Preview id returned by `preview`; required for `apply`.',
+        },
+        names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Bundle names for `latest`: omitted or empty checks the newest release of every bundle; a non-empty list updates those bundles to their newest release.',
         },
         selections: {
           type: 'object',
@@ -196,6 +260,13 @@ export function apply(ctx, rawConfig) {
         if (action === 'status') return { ...(await runtime.status()), action: 'status' }
         if (action === 'preview') return { ...(await runtime.preview({ signal: exec?.signal })), action: 'preview' }
         if (action === 'push') return { ...(await runtime.push({ signal: exec?.signal })), action: 'push' }
+        if (action === 'latest') {
+          const names = Array.isArray(args?.names) ? args.names.filter((name) => typeof name === 'string') : []
+          if (names.length === 0) {
+            return { ...(await runtime.checkLatest({ signal: exec?.signal })), action }
+          }
+          return { ...(await runtime.applyLatest(names, { signal: exec?.signal })), action }
+        }
         if (action === 'log') {
           const jobId = typeof args?.jobId === 'string' && args.jobId !== '' ? args.jobId : undefined
           const job = jobId === undefined ? runtime.latestJob() : runtime.job(jobId)

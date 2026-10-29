@@ -62,6 +62,47 @@ Gist 需要 GitHub token：
 
 不需要创建仓库，也不需要创建新的 Gist。
 
+### 更新到最新版本（第二个选项卡）
+
+Gist 清单只知道“某台主机上次推送的版本”，会落后于真实发布版：例如清单里写 `dshmarket@1.70.2`，npm 上其实已经是 `1.73.3`。
+
+**更新到最新版本** 选项卡绕过清单，直接问包源：
+
+| 来源 | 查询方式 |
+| --- | --- |
+| npm 包（`name` 或 `name@ver`） | `GET registry.npmjs.org/<name>` 的 `dist-tags.latest`；缺失时取 `versions` 里最大的版本号 |
+| GitHub 源码（`github:owner/repo#ref`） | `GET api.github.com/repos/.../tags`，取最大的版本 tag；没有 tag 时退回默认分支 HEAD 的 commit SHA |
+
+流程：
+
+1. 点 **检查最新版本**：逐项列出「当前 → 最新」，并标出可更新 / 已是最新 / 无法查询；
+2. 勾选要更新的插件（默认勾选所有可更新项）；
+3. 点 **更新选中项**：按查询到的真实最新版本安装，走与同步相同的「探测 → 卸载 → 安装 → 回滚」保护。
+
+`file:`、`link:`、`https://...tgz` 这类本地或打包来源无法查询，会标记为「无法查询」而不是猜一个版本。
+
+> 实测：`dshmarket` 当前 1.70.2，清单给的是 1.71.1，本选项卡查到的真实最新是 **1.73.3**。
+
+### 手动更新步骤
+
+HMR 无法卸载的插件（见上一节）不会自动升级，而是直接给出一段可复制的终端命令：
+
+```
+1. Quit DSH completely
+2. cd "%USERPROFILE%\.dsh\profiles\desktop"
+3. "%USERPROFILE%\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe" ^
+   "%USERPROFILE%\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.cjs" ^
+   add dsh-mnemon@0.5.36
+4. Start DSH again
+```
+
+要点：
+
+- 命令里用的是 **DSH 自带的 node 与 pnpm**，不依赖系统 PATH，复制即可运行；
+- 用 `pnpm add` 一步完成，不需要先 remove —— DSH 关闭后没有 HMR 竞争；
+- profile 目录由 `DSH_HOME` + `DSH_PROFILE` 推导，也可用 `DSH_PROFILE_DIR` 覆盖；
+- 失败项里带 `manual` 字段，`plugin_sync` 工具的 `apply` 结果也会把这些命令打印出来。
+
 ### 3. 预览、冲突与确认
 
 点击 **拉取线上清单** 只读取 Gist，不安装任何东西。页面会显示：

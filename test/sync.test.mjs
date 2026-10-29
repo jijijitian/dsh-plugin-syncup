@@ -596,6 +596,87 @@ test('a successful upgrade clears the manual-update record', async (t) => {
   assert.equal(status.state.pendingUpgrades, undefined)
 })
 
+test('checkLatest reports outdated bundles from the source, not the manifest', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-now', spec: 'dsh-now@2.0.0', version: '2.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ])
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async (url) => {
+      if (url.includes('/dsh-old')) return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }
+      if (url.includes('/dsh-now')) return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const result = await runtime.checkLatest()
+  assert.equal(result.ok, true)
+  assert.equal(result.counts.outdated, 1)
+  const old = result.entries.find((entry) => entry.name === 'dsh-old')
+  assert.equal(old.outdated, true)
+  assert.equal(old.latest, '1.5.0')
+  assert.equal(old.target, 'dsh-old@1.5.0')
+  const now = result.entries.find((entry) => entry.name === 'dsh-now')
+  assert.equal(now.outdated, false)
+})
+
+test('applyLatest installs the newest release instead of the manifest version', async (t) => {
+  const mock = await startMock({
+    schemaVersion: 1,
+    hosts: { remote: { bundles: [{ name: 'dsh-old', spec: 'dsh-old@1.1.0', version: '1.1.0', enabled: true }] } },
+  })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    // The registry is ahead of the manifest on purpose.
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.9.0' } }) }),
+  })
+  const result = await runtime.applyLatest(['dsh-old'])
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+  assert.equal(result.applied.length, 1)
+  assert.equal(result.applied[0].latest, '1.9.0')
+  const installed = manager.bundles.find((bundle) => bundle.name === 'dsh-old')
+  assert.equal(installed.installTarget.spec, 'dsh-old@1.9.0')
+  assert.equal(result.updatedList[0].latest, '1.9.0')
+})
+
+test('applyLatest skips bundles that are already current', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: new FakeManager([
+      { name: 'dsh-now', spec: 'dsh-now@2.0.0', version: '2.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    ]),
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }),
+  })
+  const result = await runtime.applyLatest(['dsh-now'])
+  assert.equal(result.totalApplied, 0)
+  assert.equal(result.skipped[0].reason, 'already-current')
+})
+
 test('preview without a Gist id asks for one', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())

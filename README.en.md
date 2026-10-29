@@ -73,6 +73,38 @@ Two exceptions: the plugin never upgrades or removes **itself** (unloading the r
 
 Plugin-manager refusals usually carry a `code` but no `message`; every failure is now translated into a readable sentence (for example `not-bundle` becomes "The package does not provide a bundle patch"), so `[object Object]` no longer appears.
 
+## Update to latest (second tab)
+
+The Gist only knows what some host last pushed, so it can lag the real release: the manifest may say `dshmarket@1.70.2` while npm already serves `1.73.3`.
+
+**Update to latest** bypasses the manifest and asks the package source directly:
+
+| Source | Lookup |
+| --- | --- |
+| npm (`name` or `name@ver`) | `dist-tags.latest` from `registry.npmjs.org/<name>`; falls back to the highest listed version |
+| GitHub (`github:owner/repo#ref`) | the highest version tag under `/repos/.../tags`; falls back to the default-branch HEAD sha when a repo has no tags |
+
+1. **Check latest versions** lists "current → latest" with outdated / current / not-checkable per row.
+2. Tick the bundles to update (all outdated rows are ticked by default).
+3. **Update selected** installs the looked-up version through the same probe → remove → install → rollback protection.
+
+`file:`, `link:`, and `https://...tgz` sources cannot be looked up; they are reported as "not checkable" instead of guessing a version.
+
+## Manual update steps
+
+For a bundle HMR will not unload, the page prints a copy-pasteable terminal sequence:
+
+```
+1. Quit DSH completely
+2. cd "%USERPROFILE%\.dsh\profiles\desktop"
+3. "<dsh home>\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe" ^
+   "<dsh home>\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.cjs" ^
+   add dsh-mnemon@0.5.36
+4. Start DSH again
+```
+
+The command uses the node and pnpm **bundled with DSH**, so it does not depend on PATH, and `pnpm add` rewrites the dependency in one step — with DSH closed there is no HMR to compete with. The profile directory is derived from `DSH_HOME` + `DSH_PROFILE` (override with `DSH_PROFILE_DIR`). Failed entries carry a `manual` field, and the `plugin_sync` tool prints the same commands.
+
 ## Configuration
 
 The page only asks for two inputs:

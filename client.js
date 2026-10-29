@@ -86,6 +86,29 @@ window.__ModuleLoader__.load({
       manualUpdateBadge: '需手动更新',
       manualUpdateHint: 'HMR 无法在运行中卸载这个插件，自动升级会破坏它的启用状态；请到插件页更新，或重启后再试。',
       reselectedNote: '已恢复该插件的启用状态（删除被拒绝）。',
+      tabSync: '同步 Gist',
+      tabLatest: '更新到最新版本',
+      latestTitle: '更新到最新版本',
+      latestHint: '直接向 npm / GitHub 查询真实最新版本，不依赖 Gist 里其他主机推送的版本。',
+      latestCheck: '检查最新版本',
+      latestChecking: '检查中…',
+      latestNone: '还没有检查结果。点击「检查最新版本」开始。',
+      latestSummary: '共 {entries} 项：{outdated} 项可更新，{current} 项已是最新，{unsupported} 项无法查询。',
+      latestOutdated: '可更新',
+      latestCurrent: '已是最新',
+      latestUnsupported: '无法查询',
+      latestSourceNpm: 'npm',
+      latestSourceGithub: 'GitHub',
+      latestUpdateAll: '更新选中项',
+      latestUpdating: '更新中…',
+      latestSelectAll: '全选可更新项',
+      latestSelectNone: '清除选择',
+      latestDone: '已更新 {count} 项。',
+      latestTarget: '{current} → {latest}',
+      manualTitle: '手动更新步骤',
+      manualIntro: '下面这些插件 HMR 无法在运行中卸载，请在关闭 DSH 后到终端执行：',
+      manualNote: '命令使用的是 DSH 自带的 node 与 pnpm，复制即可直接运行。',
+      manualClose: '收起',
       installMethodTitle: '安装方式',
       installMethodValue: '调用 DSH 官方插件管理器（ctx.pluginManager；底层是 pnpm，与插件页安装同一路径）',
       logTitle: '安装日志',
@@ -216,8 +239,31 @@ window.__ModuleLoader__.load({
       localOnlyFixed: 'This bundle cannot be removed (provided by the DSH installation); it can only be kept.',
       applyWithRemove: 'Apply ({count} change(s), {remove} remove)',
       manualUpdateBadge: 'Manual update',
-      manualUpdateHint: 'HMR cannot unload this bundle while DSH runs, so an automatic upgrade would break its enabled state. Update it from the Plugins page, or restart first.',
+      manualUpdateHint: 'HMR cannot unload this bundle while DSH runs, so an automatic upgrade would break its enabled state. Update it from the terminal with DSH closed.',
       reselectedNote: 'Its profile selection was restored after the refused removal.',
+      tabSync: 'Sync Gist',
+      tabLatest: 'Update to latest',
+      latestTitle: 'Update to latest',
+      latestHint: 'Asks npm / GitHub for the real newest release instead of trusting the version another host pushed to the Gist.',
+      latestCheck: 'Check latest versions',
+      latestChecking: 'Checking…',
+      latestNone: 'No results yet. Click "Check latest versions" to start.',
+      latestSummary: '{entries} bundle(s): {outdated} outdated, {current} current, {unsupported} not checkable.',
+      latestOutdated: 'Outdated',
+      latestCurrent: 'Current',
+      latestUnsupported: 'Not checkable',
+      latestSourceNpm: 'npm',
+      latestSourceGithub: 'GitHub',
+      latestUpdateAll: 'Update selected',
+      latestUpdating: 'Updating…',
+      latestSelectAll: 'Select all outdated',
+      latestSelectNone: 'Clear selection',
+      latestDone: 'Updated {count} bundle(s).',
+      latestTarget: '{current} → {latest}',
+      manualTitle: 'Manual update steps',
+      manualIntro: 'HMR cannot unload these bundles while DSH runs. Close DSH, then run this in a terminal:',
+      manualNote: 'The command uses the node and pnpm bundled with DSH, so it runs as pasted.',
+      manualClose: 'Hide',
       installMethodTitle: 'Install method',
       installMethodValue: 'DSH plugin manager (ctx.pluginManager — pnpm underneath, the same path the plugin page uses)',
       logTitle: 'Install log',
@@ -323,6 +369,14 @@ window.__ModuleLoader__.load({
 .dsh-ps-logline{color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-ps-logline.warn{color:var(--dsw-alias-state-warn-primary)}
 .dsh-ps-logline.error{color:var(--dsw-alias-state-error-primary)}
+.dsh-ps-tabs{display:flex;gap:2px;border-bottom:1px solid var(--dsw-alias-border-l1);margin-bottom:12px}
+.dsh-ps-tab{appearance:none;background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;margin-bottom:-1px}
+.dsh-ps-tab:hover{color:var(--dsw-alias-label-primary)}
+.dsh-ps-tab.active{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-state-business-primary);font-weight:500}
+.dsh-ps-steps{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.dsh-ps-step{display:flex;flex-direction:column;gap:4px}
+.dsh-ps-step-title{font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary)}
+.dsh-ps-cmd{display:block;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
 @media(max-width:640px){.dsh-ps-grid{grid-template-columns:minmax(0,1fr)}.dsh-ps-entry-head{flex-direction:column;align-items:stretch}.dsh-ps-select{width:100%}}
 `
 
@@ -431,6 +485,14 @@ window.__ModuleLoader__.load({
       const [job, setJob] = React.useState(null)
       const [showLog, setShowLog] = React.useState(false)
       const [confirmRemove, setConfirmRemove] = React.useState(null)
+      const [tab, setTab] = React.useState('sync')
+      const [latest, setLatest] = React.useState(null)
+      const [latestPicked, setLatestPicked] = React.useState({})
+      const [checking, setChecking] = React.useState(false)
+      const [latestUpdating, setLatestUpdating] = React.useState(false)
+      const [latestMessage, setLatestMessage] = React.useState(null)
+      const [latestApplied, setLatestApplied] = React.useState(null)
+      const [manualOpen, setManualOpen] = React.useState(true)
 
       const pollJob = React.useCallback(async () => {
         try {
@@ -540,6 +602,53 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const checkLatest = async () => {
+        setChecking(true)
+        setError(null)
+        setLatestMessage(null)
+        setShowLog(true)
+        try {
+          const data = await call('latest')
+          setLatest(data)
+          const picked = {}
+          for (const entry of data.entries) {
+            if (entry.outdated === true) picked[entry.name] = true
+          }
+          setLatestPicked(picked)
+          void pollJob()
+        } catch (failure) {
+          setError(t('actionFailed', { message: failure.message }))
+          void pollJob()
+        } finally {
+          setChecking(false)
+        }
+      }
+
+      const updateLatest = async () => {
+        const names = Object.keys(latestPicked).filter((name) => latestPicked[name] === true)
+        if (names.length === 0) return
+        setLatestUpdating(true)
+        setError(null)
+        setLatestMessage(null)
+        setShowLog(true)
+        try {
+          const data = await call('latest', { method: 'POST', body: { names } })
+          setLatestMessage(data.ok
+            ? t('latestDone', { count: data.totalApplied })
+            : t('applyPartial', { failed: data.failed.length }))
+          setLatestApplied(data)
+          setLatest(null)
+          setLatestPicked({})
+          void loadStatus()
+          void pollJob()
+        } catch (failure) {
+          setError(t('actionFailed', { message: failure.message }))
+          void pollJob()
+        } finally {
+          setLatestUpdating(false)
+        }
+      }
+
       const applyPreview = async () => {
         if (preview === null) return
         setApplying(true)
@@ -566,8 +675,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const pushNow = async () => {
-        setPushing(true)
+      const pushNow = async () => {        setPushing(true)
         setError(null)
         setMessage(null)
         setShowLog(true)
@@ -604,6 +712,9 @@ window.__ModuleLoader__.load({
         selections[entry.id] === 'remote' || selections[entry.id] === 'remove'
       )).length
       const removeCount = visibleEntries.filter((entry) => selections[entry.id] === 'remove').length
+      const manualItems = applyResult === null || !Array.isArray(applyResult.failed)
+        ? []
+        : applyResult.failed.filter((item) => item.manual !== undefined && Array.isArray(item.manual.steps))
 
       if (loading && status === null) {
         return h('div', { className: 'dsh-ps' },
@@ -696,7 +807,116 @@ window.__ModuleLoader__.load({
           ),
         ),
 
-        h('section', { className: 'dsh-ps-card' },
+        h('div', { className: 'dsh-ps-tabs' },
+          h('button', {
+            type: 'button',
+            className: `dsh-ps-tab ${tab === 'sync' ? 'active' : ''}`,
+            onClick: () => { setTab('sync') },
+          }, t('tabSync')),
+          h('button', {
+            type: 'button',
+            className: `dsh-ps-tab ${tab === 'latest' ? 'active' : ''}`,
+            onClick: () => { setTab('latest') },
+          }, t('tabLatest')),
+        ),
+
+        tab !== 'latest' ? null : h('section', { className: 'dsh-ps-card' },
+          h('div', { className: 'dsh-ps-head' },
+            h('div', null,
+              h('h3', { className: 'dsh-ps-title' }, t('latestTitle')),
+              h('p', { className: 'dsh-ps-desc' }, t('latestHint')),
+            ),
+          ),
+          h('div', { className: 'dsh-ps-actions' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-ps-btn primary',
+              disabled: checking || latestUpdating,
+              onClick: () => { void checkLatest() },
+            }, checking ? t('latestChecking') : t('latestCheck')),
+            latest === null || latest.entries.length === 0 ? null : h(React.Fragment, null,
+              h('button', {
+                type: 'button',
+                className: 'dsh-ps-btn',
+                disabled: checking || latestUpdating,
+                onClick: () => {
+                  const picked = {}
+                  for (const entry of latest.entries) if (entry.outdated === true) picked[entry.name] = true
+                  setLatestPicked(picked)
+                },
+              }, t('latestSelectAll')),
+              h('button', {
+                type: 'button',
+                className: 'dsh-ps-btn',
+                disabled: checking || latestUpdating,
+                onClick: () => { setLatestPicked({}) },
+              }, t('latestSelectNone')),
+            ),
+          ),
+          latestMessage === null ? null : h('div', { className: 'dsh-ps-ok' }, latestMessage),
+          latest === null
+            ? h('p', { className: 'dsh-ps-desc' }, t('latestNone'))
+            : h(React.Fragment, null,
+                h('div', { className: 'dsh-ps-summary' },
+                  h('span', { className: `dsh-ps-badge ${latest.counts.outdated > 0 ? 'warn' : 'ok'}` },
+                    t('latestSummary', {
+                      entries: latest.counts.entries,
+                      outdated: latest.counts.outdated,
+                      current: latest.counts.current,
+                      unsupported: latest.counts.unsupported,
+                    })),
+                ),
+                h('div', { className: 'dsh-ps-list' },
+                  latest.entries.map((entry) => h('div', { className: 'dsh-ps-entry', key: `l-${entry.name}` },
+                    h('div', { className: 'dsh-ps-entry-head' },
+                      h('div', null,
+                        h('div', { className: 'dsh-ps-name' }, entry.name),
+                        h('div', { className: 'dsh-ps-meta' },
+                          entry.outdated === true
+                            ? t('latestTarget', { current: entry.local.version || '?', latest: entry.latest })
+                            : entry.error === undefined
+                              ? `${t('latestCurrent')} · ${entry.local.version || '?'}`
+                              : `${t('latestUnsupported')} · ${entry.error}`),
+                        h('div', { className: 'dsh-ps-meta' },
+                          entry.source === 'github' ? t('latestSourceGithub') : t('latestSourceNpm')),
+                      ),
+                      entry.outdated === true
+                        ? h('input', {
+                            type: 'checkbox',
+                            checked: latestPicked[entry.name] === true,
+                            disabled: latestUpdating,
+                            onChange: (event) => {
+                              const value = event.target.checked
+                              setLatestPicked((current) => ({ ...current, [entry.name]: value }))
+                            },
+                          })
+                        : h('span', { className: `dsh-ps-badge ${entry.error === undefined ? 'ok' : 'warn'}` },
+                            entry.error === undefined ? t('latestCurrent') : t('latestUnsupported')),
+                    ),
+                  )),
+                ),
+                h('div', { className: 'dsh-ps-actions' },
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-ps-btn primary',
+                    disabled: latestUpdating || Object.keys(latestPicked).filter((n) => latestPicked[n]).length === 0,
+                    onClick: () => { void updateLatest() },
+                  }, latestUpdating ? t('latestUpdating') : t('latestUpdateAll')),
+                ),
+              ),
+          latestApplied === null ? null : h('div', { className: 'dsh-ps-result' },
+            latestApplied.updatedList?.length
+              ? latestApplied.updatedList.map((item) => h('div', { className: 'dsh-ps-meta', key: `u-${item.name}` },
+                  `${item.name}: ${item.replaced ?? ''} → ${item.version ?? item.latest ?? ''}`))
+              : null,
+            latestApplied.failed?.length
+              ? latestApplied.failed.map((item) => h('div', { className: 'dsh-ps-error', key: `uf-${item.name}` },
+                  `${item.name}: ${item.error ?? ''}`))
+              : null,
+          ),
+        ),
+
+        tab !== 'sync' ? null : h('section', { className: 'dsh-ps-card' },
           h('div', { className: 'dsh-ps-head' },
             h('div', null,
               h('h3', { className: 'dsh-ps-title' }, t('manualTitle')),
@@ -840,6 +1060,23 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'dsh-ps-label' }, t('failedTitle')),
                   applyResult.failed.map((item) => h('div', { className: 'dsh-ps-error', key: `f-${item.name}` },
                     `${item.name}: ${item.error ?? item.message ?? ''}`)),
+                )
+              : null,
+            manualItems.length > 0
+              ? h('div', { className: 'dsh-ps-confirm' },
+                  h('div', { className: 'dsh-ps-step-title' }, t('manualIntro')),
+                  manualItems.map((item) => h('div', { className: 'dsh-ps-steps', key: `m-${item.name}` },
+                    h('div', { className: 'dsh-ps-step' },
+                      h('div', { className: 'dsh-ps-step-title' }, item.name)),
+                    (item.manual?.steps ?? []).map((step, index) => h('div', { className: 'dsh-ps-step', key: `${item.name}-s${index}` },
+                      h('div', { className: 'dsh-ps-step-title' }, `${index + 1}. ${step.title}`),
+                      h('div', { className: 'dsh-ps-meta' }, step.detail),
+                      step.command === undefined || step.command === ''
+                        ? null
+                        : h('code', { className: 'dsh-ps-cmd' }, step.command),
+                    )),
+                  )),
+                  h('p', { className: 'dsh-ps-hint' }, t('manualNote')),
                 )
               : null,
             applyResult.skipped.length
