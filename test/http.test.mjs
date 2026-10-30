@@ -60,6 +60,14 @@ function createHarness(credentials = undefined) {
     job: (id) => (id === 'job-1' ? { id: 'job-1', kind: 'apply', status: 'running', lines: [] } : null),
     latestJob: () => ({ id: 'job-1', kind: 'apply', status: 'running', lines: [], progress: { done: 1, total: 2 } }),
     jobs: () => [{ id: 'job-1', kind: 'apply', status: 'running', lines: [] }],
+    cachedLatest: () => ({
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      entries: [{ id: 'a', name: 'a', outdated: true, latest: '2.0.0', local: { version: '1.0.0' } }],
+      counts: { entries: 1, outdated: 1, current: 0, unsupported: 0, failed: 0 },
+    }),
+    async checkLatest() {
+      throw new Error('a cached read must not start a new check')
+    },
   }
   registerApiRoutes({ ctx, runtime, config })
   return { routes, registrations, state, config }
@@ -182,6 +190,18 @@ test('jobs route returns the latest job and one job by id', async () => {
   const missing = fakeResponse()
   await route.handler(request({ url: '/dsh-plugin-sync/api/v2/jobs?id=nope' }), missing)
   assert.equal(missing.status, 404)
+})
+
+test('latest route restores the cached result without a new check', async () => {
+  const { routes } = createHarness()
+  const route = routes.get('/dsh-plugin-sync/api/v2/latest')
+  const response = fakeResponse()
+  await route.handler(request({ url: '/dsh-plugin-sync/api/v2/latest?cached=1' }), response)
+  assert.equal(response.status, 200)
+  const data = JSON.parse(response.body)
+  assert.equal(data.ok, true)
+  assert.equal(data.cached, true)
+  assert.equal(data.entries[0].latest, '2.0.0')
 })
 
 test('routes enforce their method', async () => {

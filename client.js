@@ -87,8 +87,8 @@ window.__ModuleLoader__.load({
       manualUpdateHint: 'HMR 无法在运行中卸载这个插件，自动升级会破坏它的启用状态；请到插件页更新，或重启后再试。',
       reselectedNote: '已恢复该插件的启用状态（删除被拒绝）。',
       tabSync: '同步 Gist',
-      tabLatest: '更新到最新版本',
-      latestTitle: '更新到最新版本',
+      tabLatest: '插件更新',
+      latestTitle: '插件更新',
       latestHint: '直接向 npm / GitHub 查询真实最新版本，不依赖 Gist 里其他主机推送的版本。',
       latestCheck: '检查最新版本',
       latestChecking: '检查中…',
@@ -101,10 +101,12 @@ window.__ModuleLoader__.load({
       latestSourceGithub: 'GitHub',
       latestUpdateAll: '更新选中项',
       latestUpdating: '更新中…',
-      latestSelectAll: '全选可更新项',
+      latestSelectAll: '选中全部',
       latestSelectNone: '清除选择',
       latestDone: '已更新 {count} 项。',
       latestTarget: '{current} → {latest}',
+      latestProgress: '已处理 {done}/{total}｜{name}',
+      latestStarting: '正在准备…',
       manualTitle: '手动更新步骤',
       manualIntro: '下面这些插件 HMR 无法在运行中卸载，请在关闭 DSH 后到终端执行：',
       manualNote: '命令使用的是 DSH 自带的 node 与 pnpm，复制即可直接运行。',
@@ -242,8 +244,8 @@ window.__ModuleLoader__.load({
       manualUpdateHint: 'HMR cannot unload this bundle while DSH runs, so an automatic upgrade would break its enabled state. Update it from the terminal with DSH closed.',
       reselectedNote: 'Its profile selection was restored after the refused removal.',
       tabSync: 'Sync Gist',
-      tabLatest: 'Update to latest',
-      latestTitle: 'Update to latest',
+      tabLatest: 'Plugin updates',
+      latestTitle: 'Plugin updates',
       latestHint: 'Asks npm / GitHub for the real newest release instead of trusting the version another host pushed to the Gist.',
       latestCheck: 'Check latest versions',
       latestChecking: 'Checking…',
@@ -256,10 +258,12 @@ window.__ModuleLoader__.load({
       latestSourceGithub: 'GitHub',
       latestUpdateAll: 'Update selected',
       latestUpdating: 'Updating…',
-      latestSelectAll: 'Select all outdated',
+      latestSelectAll: 'Select all',
       latestSelectNone: 'Clear selection',
       latestDone: 'Updated {count} bundle(s).',
       latestTarget: '{current} → {latest}',
+      latestProgress: '{done}/{total} done｜{name}',
+      latestStarting: 'Preparing…',
       manualTitle: 'Manual update steps',
       manualIntro: 'HMR cannot unload these bundles while DSH runs. Close DSH, then run this in a terminal:',
       manualNote: 'The command uses the node and pnpm bundled with DSH, so it runs as pasted.',
@@ -377,6 +381,9 @@ window.__ModuleLoader__.load({
 .dsh-ps-step{display:flex;flex-direction:column;gap:4px}
 .dsh-ps-step-title{font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary)}
 .dsh-ps-cmd{display:block;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
+.dsh-ps-progress{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.dsh-ps-progress-track{height:6px;border-radius:3px;background:var(--dsw-alias-border-l1);overflow:hidden}
+.dsh-ps-progress-bar{height:100%;border-radius:3px;background:var(--dsw-alias-state-business-primary);transition:width .25s ease}
 @media(max-width:640px){.dsh-ps-grid{grid-template-columns:minmax(0,1fr)}.dsh-ps-entry-head{flex-direction:column;align-items:stretch}.dsh-ps-select{width:100%}}
 `
 
@@ -508,10 +515,10 @@ window.__ModuleLoader__.load({
       }, [pollJob])
 
       React.useEffect(() => {
-        if (!applying && !previewing && !pushing) return undefined
-        const timer = setInterval(() => { void pollJob() }, 700)
+        if (!applying && !previewing && !pushing && !checking && !latestUpdating) return undefined
+        const timer = setInterval(() => { void pollJob() }, 600)
         return () => clearInterval(timer)
-      }, [applying, previewing, pushing, pollJob])
+      }, [applying, previewing, pushing, checking, latestUpdating, pollJob])
 
       const loadStatus = React.useCallback(async () => {
         setLoading(true)
@@ -532,7 +539,45 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         void loadStatus()
-      }, [loadStatus])
+        void pollJob()
+      }, [loadStatus, pollJob])
+
+      // Restore the last version check so returning to the page shows the real
+      // state instead of an empty tab or a spurious error.
+      const restoredRef = React.useRef(false)
+      React.useEffect(() => {
+        if (restoredRef.current || status === null) return
+        if (status.latestCheckedAt === null || status.latestCheckedAt === undefined) return
+        restoredRef.current = true
+        void (async () => {
+          try {
+            const data = await call('latest?cached=1')
+            if (data.cached !== true) return
+            setLatest(data)
+            const picked = {}
+            for (const entry of data.entries) {
+              if (entry.outdated === true) picked[entry.name] = true
+            }
+            setLatestPicked(picked)
+          } catch {
+            // A restore failure must not surface as an operation error.
+          }
+        })()
+      }, [status, call])
+
+      // A page mounted while the Host is still working must resume the running
+      // job instead of reporting an idle state or firing a conflicting request.
+      React.useEffect(() => {
+        if (status?.busy !== true) return
+        setShowLog(true)
+        if (job?.status === 'running' && job.kind === 'apply-latest') setLatestUpdating(true)
+        if (job?.status === 'running' && job.kind === 'check') setChecking(true)
+      }, [status?.busy, job?.status, job?.kind])
+
+      // While the Host is busy the buttons must stay disabled: pressing one would
+      // only produce a "another operation is already running" error that
+      // contradicts the progress the user is watching.
+      const hostBusy = status?.busy === true
 
       if (view === 'summary') return h('span', { className: 'dsh-ps-muted' }, t('summary'))
 
@@ -607,6 +652,7 @@ window.__ModuleLoader__.load({
         setError(null)
         setLatestMessage(null)
         setShowLog(true)
+        void pollJob()
         try {
           const data = await call('latest')
           setLatest(data)
@@ -615,12 +661,12 @@ window.__ModuleLoader__.load({
             if (entry.outdated === true) picked[entry.name] = true
           }
           setLatestPicked(picked)
-          void pollJob()
         } catch (failure) {
           setError(t('actionFailed', { message: failure.message }))
-          void pollJob()
         } finally {
           setChecking(false)
+          void pollJob()
+          void loadStatus()
         }
       }
 
@@ -631,6 +677,7 @@ window.__ModuleLoader__.load({
         setError(null)
         setLatestMessage(null)
         setShowLog(true)
+        void pollJob()
         try {
           const data = await call('latest', { method: 'POST', body: { names } })
           setLatestMessage(data.ok
@@ -639,13 +686,12 @@ window.__ModuleLoader__.load({
           setLatestApplied(data)
           setLatest(null)
           setLatestPicked({})
-          void loadStatus()
-          void pollJob()
         } catch (failure) {
           setError(t('actionFailed', { message: failure.message }))
-          void pollJob()
         } finally {
           setLatestUpdating(false)
+          void pollJob()
+          void loadStatus()
         }
       }
 
@@ -831,7 +877,7 @@ window.__ModuleLoader__.load({
             h('button', {
               type: 'button',
               className: 'dsh-ps-btn primary',
-              disabled: checking || latestUpdating,
+              disabled: checking || latestUpdating || hostBusy,
               onClick: () => { void checkLatest() },
             }, checking ? t('latestChecking') : t('latestCheck')),
             latest === null || latest.entries.length === 0 ? null : h(React.Fragment, null,
@@ -899,10 +945,30 @@ window.__ModuleLoader__.load({
                   h('button', {
                     type: 'button',
                     className: 'dsh-ps-btn primary',
-                    disabled: latestUpdating || Object.keys(latestPicked).filter((n) => latestPicked[n]).length === 0,
+                    disabled: latestUpdating || hostBusy || Object.keys(latestPicked).filter((n) => latestPicked[n]).length === 0,
                     onClick: () => { void updateLatest() },
                   }, latestUpdating ? t('latestUpdating') : t('latestUpdateAll')),
                 ),
+                latestUpdating || checking ? h('div', { className: 'dsh-ps-progress' },
+                  h('div', { className: 'dsh-ps-progress-track' },
+                    h('div', {
+                      className: 'dsh-ps-progress-bar',
+                      style: {
+                        width: job?.progress?.total > 0
+                          ? `${Math.round((job.progress.done / job.progress.total) * 100)}%`
+                          : '0%',
+                      },
+                    }),
+                  ),
+                  h('span', { className: 'dsh-ps-muted' },
+                    job?.progress?.total > 0
+                      ? t('latestProgress', {
+                          done: job.progress.done,
+                          total: job.progress.total,
+                          name: job.lines[job.lines.length - 1]?.message ?? '',
+                        })
+                      : t('latestStarting')),
+                ) : null,
               ),
           latestApplied === null ? null : h('div', { className: 'dsh-ps-result' },
             latestApplied.updatedList?.length

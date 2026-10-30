@@ -73,22 +73,28 @@ Two exceptions: the plugin never upgrades or removes **itself** (unloading the r
 
 Plugin-manager refusals usually carry a `code` but no `message`; every failure is now translated into a readable sentence (for example `not-bundle` becomes "The package does not provide a bundle patch"), so `[object Object]` no longer appears.
 
-## Update to latest (second tab)
+## Plugin updates (second tab)
 
 The Gist only knows what some host last pushed, so it can lag the real release: the manifest may say `dshmarket@1.70.2` while npm already serves `1.73.3`.
 
-**Update to latest** bypasses the manifest and asks the package source directly:
+**Plugin updates** bypasses the manifest and asks the package source directly:
 
 | Source | Lookup |
 | --- | --- |
 | npm (`name` or `name@ver`) | `dist-tags.latest` from `registry.npmjs.org/<name>`; falls back to the highest listed version |
 | GitHub (`github:owner/repo#ref`) | the highest version tag under `/repos/.../tags`; falls back to the default-branch HEAD sha when a repo has no tags |
 
-1. **Check latest versions** lists "current → latest" with outdated / current / not-checkable per row.
-2. Tick the bundles to update (all outdated rows are ticked by default).
+1. **Check latest versions** writes one log line per bundle as each lookup resolves, and the progress bar advances with it.
+2. Tick the bundles to update (all outdated rows are ticked by default), with **Select all** / **Clear selection**.
 3. **Update selected** installs the looked-up version through the same probe → remove → install → rollback protection.
 
 `file:`, `link:`, and `https://...tgz` sources cannot be looked up; they are reported as "not checkable" instead of guessing a version.
+
+### Progress and state consistency
+
+- **Live log**: both checking and updating append one line per bundle instead of dumping everything at the end.
+- **Progress bar**: shows `done/total` plus the bundle currently being worked on, driven by the Host's job progress.
+- **Leaving and returning**: a remounted page reads the Host's `busy` flag, the live job, and the last check result (`?cached=1`) to restore the real state. Buttons stay disabled while the Host is busy, so a stray click cannot produce a contradictory "another operation is already running" error.
 
 ## Manual update steps
 

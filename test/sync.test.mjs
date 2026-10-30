@@ -677,6 +677,63 @@ test('applyLatest skips bundles that are already current', async (t) => {
   assert.equal(result.skipped[0].reason, 'already-current')
 })
 
+test('a cold applyLatest checks versions itself instead of tripping its own lock', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '3.0.0' } }) }),
+  })
+  // No prior check: the runtime must run one while already holding the lock.
+  const result = await runtime.applyLatest(['dsh-old'])
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+  assert.equal(result.totalApplied, 1)
+})
+
+test('a version check logs each bundle as it resolves', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-a', spec: 'dsh-a@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-b', spec: 'dsh-b@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ])
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }
+    },
+  })
+  const pending = runtime.checkLatest()
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  const midway = runtime.latestJob('check')
+
+  assert.equal(midway.status, 'running')
+  assert.ok(midway.lines.length >= 1, 'the first line appears before the check ends')
+  assert.ok(midway.progress.done < midway.progress.total, 'progress advances per bundle')
+
+  const result = await pending
+  assert.equal(result.counts.outdated, 2)
+  const lines = runtime.job(result.jobId).lines.map((line) => line.message)
+  assert.ok(lines.some((line) => /^dsh-a: 1\.0\.0 -> 2\.0\.0$/.test(line)))
+  assert.ok(lines.some((line) => /^dsh-b: 1\.0\.0 -> 2\.0\.0$/.test(line)))
+})
+
 test('preview without a Gist id asks for one', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())
