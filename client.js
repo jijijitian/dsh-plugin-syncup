@@ -144,6 +144,23 @@ window.__ModuleLoader__.load({
       pushConfirmCreate: '当前没有 Gist ID。确认创建私有 Gist 并推送本机清单？',
       pushConfirmButton: '确认推送',
       pushCancel: '取消',
+      pushPlanTitle: '推送前确认差异',
+      pushPlanHint: '线上与线下不一致的地方列在下面。默认规则：冲突取较新版本；线上独有的默认保留，可改为移除；线下独有的直接推送。',
+      pushPlanShowing: '显示 {shown} / {total} 项（已隐藏 {same} 项完全一致）',
+      pushPlanConflict: '冲突',
+      pushPlanRemoteOnly: '线上独有',
+      pushPlanLocalOnly: '线下独有',
+      pushPlanSame: '一致',
+      pushPlanLocal: '本机 {version}',
+      pushPlanRemote: '线上 {version}',
+      pushPlanNewestLocal: '本机版本较新，默认推送本机',
+      pushPlanNewestRemote: '线上版本较新，默认保留线上',
+      pushPlanRemoteOnlyHint: '这个插件线上有、本机没有；默认保留在清单中。',
+      pushPlanLocalOnlyHint: '本机独有，会直接推送。',
+      choiceNewest: '取较新版本',
+      choiceKeep: '保留在清单',
+      choiceDrop: '从清单移除',
+      pushPlanConfirm: '确认推送',
       pushing: '正在推送…',
       pushCreated: '已创建 Gist（{gistName}）。其他主机填写相同名称即可。',
       pushPushed: '已推送（{version}）',
@@ -301,6 +318,23 @@ window.__ModuleLoader__.load({
       pushConfirmCreate: 'No Gist ID is configured. Create a secret Gist and push this host\'s inventory?',
       pushConfirmButton: 'Confirm push',
       pushCancel: 'Cancel',
+      pushPlanTitle: 'Confirm differences before pushing',
+      pushPlanHint: 'Rows below differ between the Gist and this host. Rules: conflicts keep the newer version; remote-only entries stay by default and can be removed; local-only entries are pushed directly.',
+      pushPlanShowing: 'Showing {shown} of {total} ({same} identical hidden)',
+      pushPlanConflict: 'Conflict',
+      pushPlanRemoteOnly: 'Remote only',
+      pushPlanLocalOnly: 'Local only',
+      pushPlanSame: 'Identical',
+      pushPlanLocal: 'local {version}',
+      pushPlanRemote: 'remote {version}',
+      pushPlanNewestLocal: 'Local is newer; this host wins by default',
+      pushPlanNewestRemote: 'Remote is newer; it stays by default',
+      pushPlanRemoteOnlyHint: 'Present in the Gist but not here; kept by default.',
+      pushPlanLocalOnlyHint: 'Local only; pushed as-is.',
+      choiceNewest: 'Keep the newer version',
+      choiceKeep: 'Keep in the manifest',
+      choiceDrop: 'Remove from the manifest',
+      pushPlanConfirm: 'Confirm push',
       pushing: 'Pushing…',
       pushCreated: 'Created Gist ({gistName}). Other hosts use the same name.',
       pushPushed: 'Pushed ({version})',
@@ -489,6 +523,9 @@ window.__ModuleLoader__.load({
       const [confirmPush, setConfirmPush] = React.useState(false)
       const [pushing, setPushing] = React.useState(false)
       const [pushResult, setPushResult] = React.useState(null)
+      const [pushPlan, setPushPlan] = React.useState(null)
+      const [pushSelections, setPushSelections] = React.useState({})
+      const [planning, setPlanning] = React.useState(false)
       const [job, setJob] = React.useState(null)
       const [showLog, setShowLog] = React.useState(false)
       const [confirmRemove, setConfirmRemove] = React.useState(null)
@@ -721,12 +758,37 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const pushNow = async () => {        setPushing(true)
+      const openPushPlan = async () => {
+        setPlanning(true)
+        setError(null)
+        setMessage(null)
+        setShowLog(true)
+        void pollJob()
+        try {
+          const data = await call('push/plan', { method: 'POST', body: {} })
+          setPushPlan(data)
+          const next = {}
+          for (const entry of data.entries) next[entry.id] = entry.defaultChoice
+          setPushSelections(next)
+          setConfirmPush(true)
+        } catch (failure) {
+          setError(t('actionFailed', { message: failure.message }))
+        } finally {
+          setPlanning(false)
+          void pollJob()
+        }
+      }
+
+      const pushNow = async () => {
+        setPushing(true)
         setError(null)
         setMessage(null)
         setShowLog(true)
         try {
-          const data = await call('push', { method: 'POST', body: { confirm: true } })
+          const data = await call('push', {
+            method: 'POST',
+            body: { confirm: true, planId: pushPlan?.planId ?? null, selections: pushSelections },
+          })
           setPushResult(data)
           if (typeof data.gistName === 'string' && data.gistName !== '') {
             setDraft((current) => ({ ...(current ?? values), gistName: data.gistName }))
@@ -737,6 +799,7 @@ window.__ModuleLoader__.load({
               ? t('pushPushed', { version: (data.version ?? '').slice(0, 12) })
               : t('pushUnchanged'))
           setConfirmPush(false)
+          setPushPlan(null)
           void loadStatus()
           void pollJob()
           setTimeout(() => { void loadStatus() }, 1200)
@@ -761,6 +824,9 @@ window.__ModuleLoader__.load({
       const manualItems = applyResult === null || !Array.isArray(applyResult.failed)
         ? []
         : applyResult.failed.filter((item) => item.manual !== undefined && Array.isArray(item.manual.steps))
+      const pushVisibleEntries = pushPlan === null
+        ? []
+        : pushPlan.entries.filter((entry) => entry.kind !== 'same')
 
       if (loading && status === null) {
         return h('div', { className: 'dsh-ps' },
@@ -1171,19 +1237,77 @@ window.__ModuleLoader__.load({
                 : t('pushUnchanged')),
           confirmPush
             ? h('div', { className: 'dsh-ps-confirm' },
-                h('span', { className: 'dsh-ps-desc' }, gistConfigured ? t('pushConfirm') : t('pushConfirmCreate')),
+                h('div', { className: 'dsh-ps-step-title' }, t('pushPlanTitle')),
+                h('p', { className: 'dsh-ps-hint' }, t('pushPlanHint')),
+                pushPlan === null
+                  ? h('p', { className: 'dsh-ps-desc' }, gistConfigured ? t('pushConfirm') : t('pushConfirmCreate'))
+                  : h(React.Fragment, null,
+                      h('div', { className: 'dsh-ps-summary' },
+                        h('span', { className: 'dsh-ps-badge warn' },
+                          `${t('pushPlanConflict')} ${pushPlan.counts.conflict}`),
+                        h('span', { className: 'dsh-ps-badge warn' },
+                          `${t('pushPlanRemoteOnly')} ${pushPlan.counts.remoteOnly}`),
+                        h('span', { className: 'dsh-ps-badge ok' },
+                          `${t('pushPlanLocalOnly')} ${pushPlan.counts.localOnly}`),
+                        h('span', { className: 'dsh-ps-badge' },
+                          t('pushPlanShowing', {
+                            shown: pushVisibleEntries.length,
+                            total: pushPlan.counts.entries,
+                            same: pushPlan.counts.same,
+                          })),
+                      ),
+                      h('div', { className: 'dsh-ps-list' },
+                        pushVisibleEntries.map((entry) => h('div', { className: 'dsh-ps-entry', key: `pp-${entry.id}` },
+                          h('div', { className: 'dsh-ps-entry-head' },
+                            h('div', null,
+                              h('div', { className: 'dsh-ps-name' }, entry.name),
+                              h('div', { className: 'dsh-ps-meta' },
+                                entry.kind === 'remote-only'
+                                  ? t('pushPlanRemoteOnlyHint')
+                                  : entry.kind === 'local-only'
+                                    ? t('pushPlanLocalOnlyHint')
+                                    : entry.newest === 'local'
+                                      ? t('pushPlanNewestLocal')
+                                      : t('pushPlanNewestRemote')),
+                              h('div', { className: 'dsh-ps-meta' },
+                                `${entry.local === null ? '—' : t('pushPlanLocal', { version: entry.local.version || '?' })}`
+                                + `  ·  `
+                                + `${entry.remote === null ? '—' : t('pushPlanRemote', { version: entry.remote.version || '?' })}`),
+                            ),
+                            entry.choices.length <= 1
+                              ? h('span', { className: 'dsh-ps-badge ok' },
+                                  entry.kind === 'local-only' ? t('pushPlanLocalOnly')
+                                    : entry.kind === 'same' ? t('pushPlanSame') : t('pushPlanConflict'))
+                              : h('select', {
+                                  className: 'dsh-ps-select',
+                                  value: pushSelections[entry.id] ?? entry.defaultChoice,
+                                  disabled: pushing,
+                                  onChange: (event) => {
+                                    const value = event.target.value
+                                    setPushSelections((current) => ({ ...current, [entry.id]: value }))
+                                  },
+                                }, entry.choices.map((choice) => h('option', { key: choice, value: choice },
+                                  choice === 'newest' ? t('choiceNewest')
+                                    : choice === 'local' ? t('choiceLocal')
+                                      : choice === 'remote' ? t('choiceRemote')
+                                        : choice === 'keep' ? t('choiceKeep')
+                                          : choice === 'drop' ? t('choiceDrop') : t('choiceSkip')))),
+                          ),
+                        )),
+                      ),
+                    ),
                 h('div', { className: 'dsh-ps-actions' },
                   h('button', {
                     type: 'button',
                     className: 'dsh-ps-btn danger',
-                    disabled: pushing,
+                    disabled: pushing || pushPlan === null,
                     onClick: () => { void pushNow() },
-                  }, pushing ? t('pushing') : t('pushConfirmButton')),
+                  }, pushing ? t('pushing') : t('pushPlanConfirm')),
                   h('button', {
                     type: 'button',
                     className: 'dsh-ps-btn',
                     disabled: pushing,
-                    onClick: () => { setConfirmPush(false) },
+                    onClick: () => { setConfirmPush(false); setPushPlan(null) },
                   }, t('pushCancel')),
                 ),
               )
@@ -1191,9 +1315,9 @@ window.__ModuleLoader__.load({
                 h('button', {
                   type: 'button',
                   className: 'dsh-ps-btn',
-                  disabled: pushing || token?.configured !== true || gistDirty,
-                  onClick: () => { setConfirmPush(true) },
-                }, pushing ? t('pushing') : (gistConfigured ? t('push') : t('pushCreating'))),
+                  disabled: pushing || planning || token?.configured !== true || gistDirty,
+                  onClick: () => { void openPushPlan() },
+                }, planning ? t('latestStarting') : (gistConfigured ? t('push') : t('pushCreating'))),
               ),
         ),
 

@@ -104,8 +104,8 @@ function request({ method = 'GET', origin, body, url } = {}) {
 
 test('status route returns config snapshot without the token', async () => {
   const { routes, registrations } = createHarness()
-  assert.equal(registrations.length, 7)
-  assert.equal(new Set(registrations.map((route) => route.path)).size, 7)
+  assert.equal(registrations.length, 8)
+  assert.equal(new Set(registrations.map((route) => route.path)).size, 8)
   const route = routes.get('/dsh-plugin-sync/api/v2/status')
   assert.ok(route)
   const response = fakeResponse()

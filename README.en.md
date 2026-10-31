@@ -31,7 +31,17 @@ plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-sync
    - hosts disagree on version/source → use the highest version, keep local, or skip;
    - local only (missing from the Gist) → **keep by default**, or remove the local bundle.
 6. **Apply**: only rows set to **use remote** or **remove** are executed. Installs and removals both go through the DSH plugin manager.
-7. **Push**: **Push local inventory** updates the Gist after a confirmation. Unchanged content creates no update. Concurrency uses the Gist version: read, compare before writing, and re-merge on change (up to three attempts). GitHub rejects conditional headers such as `If-Match` on this endpoint with `400 Bad Request`, so ETag preconditions cannot be used.
+7. **Push**: **Push local inventory** first reads the Gist and computes a remote-versus-local diff **without writing anything**; the manifest is updated only after you confirm.
+
+| Case | Default | Choices |
+| --- | --- | --- |
+| In both places at different versions/sources | **Keep the newer version** (a tie keeps the local source) | keep newer / keep local / keep remote |
+| Remote only | **Kept in the manifest** | keep / remove from manifest |
+| Local only | **Pushed directly**, no question | — |
+
+Identical rows are folded away. "Remove from manifest" deletes the bundle from **every** host record, so other hosts lose it too — use it deliberately. The Gist is re-read before writing, so a concurrent push is merged against fresh content (up to three attempts); a push only replaces this host's own `hosts.<hostId>` record.
+
+Unchanged content creates no update. GitHub rejects conditional headers such as `If-Match` on this endpoint with `400 Bad Request`, so concurrency relies on read-compare-retry rather than ETag preconditions.
 
 ## Install method and log
 

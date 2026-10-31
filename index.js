@@ -10,7 +10,7 @@ export { normalizeConfig }
 export const name = 'dsh-plugin-sync'
 export const inject = ['tools', 'pluginManager']
 
-const ACTIONS = new Set(['status', 'preview', 'apply', 'latest', 'push', 'log'])
+const ACTIONS = new Set(['status', 'preview', 'apply', 'latest', 'push', 'plan-push', 'log'])
 
 /**
  * Locate the runtime directory that holds this DSH's bundled node and pnpm.
@@ -168,6 +168,35 @@ export function renderToolResult(_args, value) {
   if (typeof value.status === 'string' && value.action === 'push') {
     lines.push(`Push: ${value.status}${value.version ? ` (${shortSha(value.version)})` : ''}`)
   }
+  if (typeof value.planId === 'string' && Array.isArray(value.entries) && isRecord(value.counts)) {
+    lines.push(
+      `Push plan: ${value.counts.conflict} conflict(s), ${value.counts.remoteOnly} remote-only, `
+      + `${value.counts.localOnly} local-only, ${value.counts.same} unchanged`,
+    )
+    for (const entry of value.entries.filter((item) => item.kind === 'conflict').slice(0, 12)) {
+      lines.push(`  ~ ${entry.name}: local ${entry.local?.version || '?'} / remote ${entry.remote?.version || '?'} -> keep ${entry.newest}`)
+    }
+    for (const entry of value.entries.filter((item) => item.kind === 'remote-only').slice(0, 12)) {
+      lines.push(`  ? ${entry.name}: remote ${entry.remote?.version || '?'}, kept by default (choose drop to remove)`)
+    }
+    for (const entry of value.entries.filter((item) => item.kind === 'local-only').slice(0, 12)) {
+      lines.push(`  + ${entry.name}: local ${entry.local?.version || '?'}, pushed`)
+    }
+    lines.push(`Plan ID: ${value.planId}`)
+  }
+  if (isRecord(value.report)) {
+    const report = value.report
+    if (Array.isArray(report.conflicts) && report.conflicts.length > 0) {
+      lines.push(`Resolved conflicts: ${report.conflicts.length}`)
+      for (const item of report.conflicts.slice(0, 12)) lines.push(`  ~ ${item.name}: kept ${item.side} ${item.version}`)
+    }
+    if (Array.isArray(report.dropped) && report.dropped.length > 0) {
+      lines.push(`Dropped from manifest: ${report.dropped.join(', ')}`)
+    }
+    if (Array.isArray(report.kept) && report.kept.length > 0) {
+      lines.push(`Kept in manifest: ${report.kept.join(', ')}`)
+    }
+  }
   if (isRecord(value.remote) && value.remote.hostCount !== undefined) {
     lines.push(`Remote: ${value.remote.hostCount} host(s), ${value.remote.bundleCount} bundle record(s)`)
   }
@@ -205,7 +234,10 @@ export function apply(ctx, rawConfig) {
       'Preview and apply a GitHub Gist plugin manifest. Manual only: no background sync. '
       + '`preview` fetches the Gist and returns install/upgrade/downgrade/enable/local-only entries plus conflicts; '
       + '`apply` installs, enables, or removes only the entries the caller selects from that preview; '
-      + '`push` uploads this host\'s portable inventory (creating a secret Gist when no Gist id is configured); '
+      + '`plan-push` compares the Gist with this host: conflicts keep the newer version by default, '
+      + 'remote-only entries are kept by default, local-only entries are pushed directly; '
+      + '`push` uploads this host\'s portable inventory, optionally following that plan '
+      + '(creating a secret Gist when no Gist id is configured); '
       + '`log` returns the latest install log with per-item progress; `status` reports config and last-run state. '
       + 'Installs and removals go through the DSH plugin manager. The same operations are available in the plugin page.',
     parameters: {
@@ -215,7 +247,11 @@ export function apply(ctx, rawConfig) {
         action: {
           type: 'string',
           enum: [...ACTIONS],
-          description: 'status, preview, apply, latest, push, or log.',
+          description: 'status, preview, apply, latest, plan-push, push, or log.',
+        },
+        planId: {
+          type: 'string',
+          description: 'Plan id returned by `plan-push`; pass it with `push` to follow the confirmed comparison.',
         },
         previewId: {
           type: 'string',
@@ -228,8 +264,8 @@ export function apply(ctx, rawConfig) {
         },
         selections: {
           type: 'object',
-          additionalProperties: { type: 'string', enum: ['remote', 'local', 'skip', 'remove'] },
-          description: 'Map of bundle name to choice. `remove` uninstalls a local-only bundle; omitted entries use the preview default.',
+          additionalProperties: { type: 'string', enum: ['remote', 'local', 'skip', 'remove', 'newest', 'keep', 'drop', 'push'] },
+          description: 'Map of bundle name to choice. For `apply`: remote, local, skip, remove. For `plan-push`/`push`: newest, local, remote (conflict), keep, drop (remote-only). Omitted entries use the default.',
         },
         jobId: {
           type: 'string',
@@ -259,7 +295,17 @@ export function apply(ctx, rawConfig) {
       try {
         if (action === 'status') return { ...(await runtime.status()), action: 'status' }
         if (action === 'preview') return { ...(await runtime.preview({ signal: exec?.signal })), action: 'preview' }
-        if (action === 'push') return { ...(await runtime.push({ signal: exec?.signal })), action: 'push' }
+        if (action === 'push') {
+          return {
+            ...(await runtime.push({
+              planId: typeof args?.planId === 'string' && args.planId !== '' ? args.planId : null,
+              selections: isRecord(args?.selections) ? args.selections : {},
+              signal: exec?.signal,
+            })),
+            action: 'push',
+          }
+        }
+        if (action === 'plan-push') return { ...(await runtime.planPush({ signal: exec?.signal })), action }
         if (action === 'latest') {
           const names = Array.isArray(args?.names) ? args.names.filter((name) => typeof name === 'string') : []
           if (names.length === 0) {

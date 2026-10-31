@@ -259,6 +259,127 @@ test('preview reads a Gist and applies only selected entries', async (t) => {
   assert.equal(typeof state.lastPreviewAt, 'string')
 })
 
+test('planPush reports the three remote/local cases without writing', async (t) => {
+  const mock = await startMock({
+    schemaVersion: 1,
+    hosts: {
+      'host-a': {
+        hostId: 'host-a',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bundles: [
+          { name: 'dsh-shared', spec: 'dsh-shared@9.0.0', version: '9.0.0', enabled: true },
+          { name: 'dsh-remote', spec: 'dsh-remote@1.0.0', version: '1.0.0', enabled: true },
+        ],
+      },
+    },
+  })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-shared', spec: 'dsh-shared@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-local', spec: 'dsh-local@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ])
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+  })
+  const plan = await runtime.planPush()
+  const byName = new Map(plan.entries.map((entry) => [entry.name, entry]))
+
+  assert.equal(byName.get('dsh-shared').kind, 'conflict')
+  assert.equal(byName.get('dsh-shared').defaultChoice, 'newest')
+  assert.equal(byName.get('dsh-shared').resolution, 'remote')
+  assert.equal(byName.get('dsh-remote').kind, 'remote-only')
+  assert.equal(byName.get('dsh-remote').defaultChoice, 'keep')
+  assert.equal(byName.get('dsh-local').kind, 'local-only')
+  assert.equal(byName.get('dsh-local').defaultChoice, 'push')
+  assert.equal(plan.counts.needsChoice, 1)
+  // Planning alone must not write to the Gist.
+  assert.equal(mock.writes(), 0)
+})
+
+test('push with a plan resolves conflicts to the newer side and honours drops', async (t) => {
+  const mock = await startMock({
+    schemaVersion: 1,
+    hosts: {
+      'host-a': {
+        hostId: 'host-a',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bundles: [
+          { name: 'dsh-newer-remote', spec: 'dsh-newer-remote@5.0.0', version: '5.0.0', enabled: true },
+          { name: 'dsh-older-remote', spec: 'dsh-older-remote@1.0.0', version: '1.0.0', enabled: true },
+          { name: 'dsh-remote', spec: 'dsh-remote@1.0.0', version: '1.0.0', enabled: true },
+        ],
+      },
+    },
+  })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-newer-remote', spec: 'dsh-newer-remote@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-older-remote', spec: 'dsh-older-remote@9.0.0', version: '9.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-local', spec: 'dsh-local@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ])
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+  })
+  const plan = await runtime.planPush()
+  const result = await runtime.push({
+    planId: plan.planId,
+    selections: { 'dsh-remote': 'drop' },
+  })
+
+  assert.equal(result.status, 'pushed')
+  const written = mock.readState().parsed
+  const mine = new Map(written.hosts['host-local'].bundles.map((bundle) => [bundle.name, bundle]))
+  // Remote 5.0.0 beats local 1.0.0.
+  assert.equal(mine.get('dsh-newer-remote').version, '5.0.0')
+  // Local 9.0.0 beats remote 1.0.0.
+  assert.equal(mine.get('dsh-older-remote').version, '9.0.0')
+  // Local-only is pushed as-is.
+  assert.equal(mine.has('dsh-local'), true)
+  // The dropped remote-only entry disappears from every other host record.
+  const others = written.hosts['host-a'].bundles.map((bundle) => bundle.name)
+  assert.equal(others.includes('dsh-remote'), false)
+  assert.equal(others.includes('dsh-newer-remote'), true)
+  assert.deepEqual(result.report.dropped, ['dsh-remote'])
+})
+
+test('push with a plan keeps a remote-only bundle by default', async (t) => {
+  const mock = await startMock({
+    schemaVersion: 1,
+    hosts: {
+      'host-a': {
+        hostId: 'host-a',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bundles: [{ name: 'dsh-remote', spec: 'dsh-remote@1.0.0', version: '1.0.0', enabled: true }],
+      },
+    },
+  })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: new FakeManager([]),
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+  })
+  const plan = await runtime.planPush()
+  await runtime.push({ planId: plan.planId, selections: {} })
+  assert.equal(mock.readState().parsed.hosts['host-a'].bundles.length, 1)
+})
+
 test('push updates an existing Gist and skips unchanged content', async (t) => {
   const mock = await startMock({
     schemaVersion: 1,
