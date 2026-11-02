@@ -855,6 +855,71 @@ test('a version check logs each bundle as it resolves', async (t) => {
   assert.ok(lines.some((line) => /^dsh-b: 1\.0\.0 -> 2\.0\.0$/.test(line)))
 })
 
+test('applyLatest checks only the selected bundles', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'picked', spec: 'picked@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'untouched-a', spec: 'untouched-a@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'untouched-b', spec: 'untouched-b@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const looked = []
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async (url) => {
+      if (!url.includes('/repos/')) looked.push(url.split('/').pop())
+      return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }
+    },
+  })
+  const result = await runtime.applyLatest(['picked'])
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+
+  // Only the selected bundle may have been looked up.
+  assert.deepEqual(looked, ['picked'])
+
+  const job = runtime.job(result.jobId)
+  const checkLine = job.lines.find((line) => /selected bundle/.test(line.message))
+  assert.ok(checkLine !== undefined, 'the scoped check is logged')
+  assert.match(checkLine.message, /1 selected bundle/)
+  // Progress covers the update itself, not the whole profile.
+  assert.equal(job.progress.total, 1)
+  const messages = job.lines.map((line) => line.message).join('\n')
+  assert.doesNotMatch(messages, /untouched-a/)
+  assert.doesNotMatch(messages, /untouched-b/)
+})
+
+test('a scoped check leaves the profile-wide cache intact', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'a', spec: 'a@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'b', spec: 'b@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }),
+  })
+  const full = await runtime.checkLatest()
+  assert.equal(runtime.cachedLatest().entries.length, 2)
+
+  await runtime.applyLatest(['a'])
+  // The remount cache still describes the whole profile.
+  assert.equal(runtime.cachedLatest().entries.length, 2)
+  assert.equal(runtime.cachedLatest().counts.entries, full.counts.entries)
+})
+
 test('preview without a Gist id asks for one', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())

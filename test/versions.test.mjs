@@ -63,15 +63,21 @@ test('npm lookup falls back to the newest listed version', async () => {
   assert.equal(found.latest, '1.12.0')
 })
 
-test('github lookup prefers the newest version tag', async () => {
+test('github lookup falls back to tags when the repo has no releases', async () => {
   const checker = createVersionChecker({
-    fetchImpl: fakeFetch({
-      '/repos/owner/repo/tags': [{ name: 'v3.4.1', commit: { sha: 'aaa' } }, { name: 'v3.10.0', commit: { sha: 'bbb' } }],
-    }),
+    fetchImpl: async (url) => {
+      // A successful, empty release list is the only thing that permits the fallback.
+      if (url.includes('/releases')) return { ok: true, status: 200, json: async () => [] }
+      if (url.includes('/tags')) {
+        return { ok: true, status: 200, json: async () => [{ name: 'v3.4.1', commit: { sha: 'aaa' } }, { name: 'v3.10.0', commit: { sha: 'bbb' } }] }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
   })
   const found = await checker.latestFor('github:owner/repo#old')
   assert.equal(found.kind, 'github')
   assert.equal(found.latest, '3.10.0')
+  assert.equal(found.source, 'tag')
   assert.equal(found.sha, 'bbb')
 })
 
@@ -279,6 +285,88 @@ test('equal versions on both sides resolve to npm', async () => {
   assert.equal(found.latest, '5.17.0')
   assert.equal(found.source, 'npm')
   assert.equal(found.githubLatest, '5.17.0')
+})
+
+test('a failed release read does not silently fall back to tags', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      // Rate limit / auth failure: the release list is unknown, not empty.
+      if (url.includes('/releases')) return { ok: false, status: 403, json: async () => ({}) }
+      if (url.includes('/tags')) return { ok: true, status: 200, json: async () => [{ name: 'v9.9.9' }] }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, null)
+  assert.equal(found.ok, false)
+  assert.notEqual(found.latest, '9.9.9', 'a tag must not answer for an unreadable release list')
+})
+
+test('platform tags ahead of the newest release do not win', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v0.4.2', draft: false, prerelease: false }] }
+      }
+      if (url.includes('/tags')) {
+        return { ok: true, status: 200, json: async () => [{ name: 'v2.0.0+win' }, { name: 'v1.0.0' }, { name: 'v0.4.2' }] }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '0.4.2')
+  assert.equal(found.source, 'release')
+})
+
+test('an alpha release is skipped in favour of the newest stable release', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { tag_name: 'v0.5.0-alpha4', draft: false, prerelease: true },
+        { tag_name: 'v0.5.0-alpha3', draft: false, prerelease: true },
+        { tag_name: 'v0.4.4', draft: false, prerelease: false },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:T-Auto/dsh-ops')
+  assert.equal(found.latest, '0.4.4')
+  assert.equal(found.prerelease, false)
+})
+
+test('an alpha tag is skipped even when GitHub forgets the prerelease flag', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { tag_name: 'v0.5.0-alpha4', draft: false, prerelease: false },
+        { tag_name: 'v0.4.4', draft: false, prerelease: false },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '0.4.4')
+})
+
+test('the tag fallback is reported to the caller', async () => {
+  const seen = []
+  const checker = createVersionChecker({
+    onReleaseFallback: (target, info) => seen.push([target.repo, info.reason]),
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v1.0.0-beta.1', draft: false, prerelease: true }] }
+      }
+      if (url.includes('/tags')) return { ok: true, status: 200, json: async () => [{ name: 'v0.9.0' }] }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '0.9.0')
+  assert.equal(found.source, 'tag')
+  assert.deepEqual(seen, [['r', 'no-stable-release']])
 })
 
 test('a network failure is reported, not thrown', async () => {

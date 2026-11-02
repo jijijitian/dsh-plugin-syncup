@@ -97,17 +97,22 @@ The Gist only knows what some host last pushed, so it can lag the real release: 
 
 ### Three GitHub rules
 
-1. **Releases, not tags.** Maintainers push a tag and publish the matching release later — or never. Installing from the newest tag can fail with `ERR_PNPM_NO_MATCHING_VERSION`. Releases decide whenever they exist; tags are a fallback for repositories that never published one, and the page marks that case as "GitHub tag (no release)".
-2. **Stable releases only.** `draft` is skipped, `prerelease: true` is skipped, and a version string carrying a prerelease suffix (such as `5.20.0-beta.1`) is skipped as well, so a missing or stale flag cannot let one through.
+1. **Releases, not tags.** Maintainers push a tag and publish the matching release later — or never. Installing from the newest tag can fail with `ERR_PNPM_NO_MATCHING_VERSION`. Releases decide whenever they exist; the tag fallback runs only when the release list was **read successfully** and is genuinely empty, and the page marks that case as "GitHub tag (no release)".
+   - A failed release request (rate limit, network, auth) is **not** treated as "no releases". It reports an error instead of quietly switching to tags — otherwise one API rate limit would silently reintroduce tag-based updates.
+2. **Stable releases only.** `draft` is skipped, `prerelease: true` is skipped, and a version string carrying a prerelease suffix (such as `5.20.0-beta.1` or `0.5.0-alpha4`) is skipped as well, so a missing or stale flag cannot let one through.
 3. **A tie goes to npm.** GitHub wins only when its version is **strictly newer**; when both sides carry the same version npm is used, because it installs more reliably (prebuilt output, no missing `lib/`).
 
 Only npm specs get the automatic GitHub comparison, through the `repository` field; without one, or when it is not a GitHub URL, npm alone is used. That field exists only in the full npm document, not in the compact `install-v1` one, so lookups request `Accept: application/json`.
 
-> Example: `dsh-connect-workbuddy` publishes npm 5.17.0; the repo carries a `v5.18.0` tag but **no matching release** (the newest release is v5.17.0). The old tag-based check reported an update to 5.18.0; the current rule reports 5.17.0 and, being a tie, uses npm.
+> Example 1: `dsh-connect-workbuddy` publishes npm 5.17.0; the repo carries a `v5.18.0` tag but **no matching release** (the newest release is v5.17.0). The old tag-based check reported an update to 5.18.0; the current rule reports 5.17.0 and, being a tie, uses npm.
+>
+> Example 2: `dsh-ops` publishes `v0.5.0-alpha4` as its newest release (flagged prerelease); the newest stable release is `v0.4.4`. It now reports 0.4.4 instead of an alpha.
 
 1. **Check latest versions** writes one log line per bundle as each lookup resolves, and the progress bar advances with it.
 2. Tick the bundles to update (all outdated rows are ticked by default), with **Select all** / **Clear selection**.
-3. **Update selected** installs the looked-up version through the same probe → remove → install → rollback protection.
+3. **Update selected** re-checks **only the selected bundles** and installs them; the progress bar and log describe exactly those rows, and the install goes through the same probe → remove → install → rollback protection.
+
+On scope: an update is a targeted action, so it neither reuses a profile-wide result nor rescans the whole profile. The log starts with `checking N selected bundle(s)`, where `N` is the number of selected rows.
 
 `file:`, `link:`, and `https://...tgz` sources cannot be looked up; they are reported as "not checkable" instead of guessing a version.
 

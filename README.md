@@ -76,19 +76,24 @@ Gist 清单只知道“某台主机上次推送的版本”，会落后于真实
 
 ### GitHub 侧的三条规则
 
-1. **以 Release 为准，而不是 Tag。** 有人会先推 tag、过一阵才发布 release（甚至不发布）。直接按 tag 安装会得到 `ERR_PNPM_NO_MATCHING_VERSION`。因此有 release 时只看 release；只有仓库从没发过 release 时才退回 tag，并在界面上标注「GitHub tag（无 release）」以示区别。
-2. **只取正式版。** `draft` 直接跳过；`prerelease` 标记为 true 的跳过；版本号自身带预发布后缀（如 `5.20.0-beta.1`）的也跳过。两条判断都生效，避免标记遗漏或误标。
+1. **以 Release 为准，而不是 Tag。** 有人会先推 tag、过一阵才发布 release（甚至不发布）。直接按 tag 安装会得到 `ERR_PNPM_NO_MATCHING_VERSION`。因此有 release 时只看 release；只有**成功读到** release 列表且确实为空时，才退回 tag，并在界面标注「GitHub tag（无 release）」。
+   - 关键点：release 请求本身失败（限流 403、网络、鉴权）**不会**被当作“没有 release”。这种情况会明确报错，而不是悄悄改用 tag——否则一旦触发 API 限流就会退回按 tag 更新。
+2. **只取正式版。** `draft` 直接跳过；`prerelease` 标记为 true 的跳过；版本号自身带预发布后缀（如 `5.20.0-beta.1`、`0.5.0-alpha4`）的也跳过。两条判断叠加，标记遗漏或误标都不会让预发布版本混进来。
 3. **版本相同则用 npm。** 只有 GitHub 版本**严格更高**时才选 GitHub；两边相同则用 npm，因为 npm 安装更可靠（有预构建产物、不会缺 `lib/`）。
 
 补充：npm 规格的包才会自动补查 GitHub（通过 `repository` 字段）；`repository` 不存在或不是 GitHub 时退回只查 npm。该字段只出现在完整元数据里，`install-v1` 精简文档不含它，因此查询使用 `Accept: application/json`。
 
-> 实例：`dsh-connect-workbuddy` 的 npm 最新为 5.17.0，仓库里有 `v5.18.0` 的 tag 但**没有对应 release**（最新 release 是 v5.17.0）。旧逻辑按 tag 判定可升到 5.18.0；现在正确判定为 5.17.0，且版本相同故使用 npm。
+> 实例 1：`dsh-connect-workbuddy` 的 npm 最新为 5.17.0，仓库里有 `v5.18.0` 的 tag 但**没有对应 release**（最新 release 是 v5.17.0）。旧逻辑按 tag 判定可升到 5.18.0；现在正确判定为 5.17.0，且版本相同故使用 npm。
+>
+> 实例 2：`dsh-ops` 的最新 release 是 `v0.5.0-alpha4`（已标记 prerelease），正式版为 `v0.4.4`。现在正确显示 0.4.4，而不是 alpha。
 
 流程：
 
 1. 点 **检查最新版本**：日志逐条实时输出，每查完一个插件立刻写一行，进度条同步前进；
 2. 勾选要更新的插件（默认勾选全部可更新项），可用 **选中全部** / **清除选择**；
-3. 点 **更新选中项**：按真实最新版本安装，走与同步相同的「探测 → 卸载 → 安装 → 回滚」保护。
+3. 点 **更新选中项**：只对**选中的插件**重新检测并安装，进度条与日志只反映这些条目；安装走与同步相同的「探测 → 卸载 → 安装 → 回滚」保护。
+
+关于第 3 步的检测范围：更新是一次只针对选中项的操作，因此不会复用「检查最新版本」得到的全量结果，也不会重新扫描整个 profile。日志开头会显示 `checking N selected bundle(s)`，`N` 即选中数量。
 
 `file:`、`link:`、`https://...tgz` 这类本地或打包来源无法查询，会标记为「无法查询」而不是猜一个版本。
 
