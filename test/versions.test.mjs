@@ -120,12 +120,12 @@ test('gitHubTargetOfRepository reads package metadata repository fields', () => 
   assert.equal(gitHubTargetOfRepository(''), null)
 })
 
-test('an npm spec also consults the repository and keeps the newer version', async () => {
+test('an npm spec also consults the repository and keeps the newer release', async () => {
   const checker = createVersionChecker({
     fetchImpl: async (url) => {
-      if (url.includes('/repos/')) {
-        // The git tag is ahead of the published release.
-        return { ok: true, status: 200, json: async () => [{ name: 'v5.18.0', commit: { sha: 'aaa' } }] }
+      if (url.includes('/releases')) {
+        // The GitHub release is ahead of the published npm version.
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v5.18.0', draft: false, prerelease: false }] }
       }
       return {
         ok: true,
@@ -139,7 +139,7 @@ test('an npm spec also consults the repository and keeps the newer version', asy
   })
   const found = await checker.latestFor('dsh-connect-workbuddy@5.17.0')
   assert.equal(found.latest, '5.18.0')
-  assert.equal(found.source, 'github')
+  assert.equal(found.source, 'release')
   assert.equal(found.npmLatest, '5.17.0')
   assert.equal(found.githubLatest, '5.18.0')
 })
@@ -194,6 +194,91 @@ test('checkAll flags an npm package as outdated when only the git tag moved', as
   ])
   assert.equal(result.outdated, true)
   assert.equal(result.latest, '5.18.0')
+})
+
+test('a tag without a matching release is ignored', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        // v5.18.0 is tagged but never released; the newest release is 5.17.0.
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v5.17.0', draft: false, prerelease: false }] }
+      }
+      if (url.includes('/tags')) {
+        return { ok: true, status: 200, json: async () => [{ name: 'v5.18.0' }, { name: 'v5.17.0' }] }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '5.17.0')
+  assert.equal(found.source, 'release')
+})
+
+test('prereleases and drafts are skipped when a stable release exists', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { tag_name: 'v6.0.0', draft: false, prerelease: true },
+        { tag_name: 'v5.19.0', draft: true, prerelease: false },
+        { tag_name: 'v5.18.0', draft: false, prerelease: false },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '5.18.0')
+  assert.equal(found.prerelease, false)
+})
+
+test('a -beta tag is skipped even when GitHub does not flag it', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { tag_name: 'v5.20.0-beta.1', draft: false, prerelease: false },
+        { tag_name: 'v5.18.0', draft: false, prerelease: false },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '5.18.0')
+})
+
+test('a repository with no release falls back to tags', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) return { ok: true, status: 200, json: async () => [] }
+      if (url.includes('/tags')) return { ok: true, status: 200, json: async () => [{ name: 'v2.3.0' }] }
+      return { ok: false, status: 404, json: async () => ({}) }
+    },
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '2.3.0')
+  assert.equal(found.source, 'tag')
+})
+
+test('equal versions on both sides resolve to npm', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v5.17.0', draft: false, prerelease: false }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '5.17.0' },
+          repository: { url: 'git+https://github.com/o/r.git' },
+        }),
+      }
+    },
+  })
+  const found = await checker.latestFor('pkg@5.17.0')
+  assert.equal(found.latest, '5.17.0')
+  assert.equal(found.source, 'npm')
+  assert.equal(found.githubLatest, '5.17.0')
 })
 
 test('a network failure is reported, not thrown', async () => {

@@ -92,18 +92,18 @@ The Gist only knows what some host last pushed, so it can lag the real release: 
 | Source | Lookup |
 | --- | --- |
 | npm (`name` or `name@ver`) | `dist-tags.latest` from `registry.npmjs.org/<name>`; falls back to the highest listed version |
-| GitHub (`github:owner/repo#ref`) | the highest version tag under `/repos/.../tags`; falls back to the default-branch HEAD sha when a repo has no tags |
-| npm package + GitHub repo (automatic) | reads `repository` from the full npm metadata and also asks for tags, then **keeps the newer of the two** |
+| GitHub (`github:owner/repo#ref`) | `GET /repos/.../releases`, taking the newest **stable release**; tags are only used when the repo has never published one |
+| npm package + GitHub repo (automatic) | reads `repository` from the full npm metadata, asks GitHub by the rule above, then compares with the npm version |
 
-That last row matters: maintainers often tag a release in git before publishing to npm, or publish only to GitHub. Looking at npm alone would call such a bundle "current". An npm spec now resolves its `repository` and checks GitHub tags too:
+### Three GitHub rules
 
-- both sides comparable → the newer wins, and the page shows `npm 5.17.0 / GitHub 5.18.0 → GitHub wins`;
-- npm has no usable version but GitHub does → GitHub is used;
-- no `repository`, or it is not a GitHub URL → npm only.
+1. **Releases, not tags.** Maintainers push a tag and publish the matching release later — or never. Installing from the newest tag can fail with `ERR_PNPM_NO_MATCHING_VERSION`. Releases decide whenever they exist; tags are a fallback for repositories that never published one, and the page marks that case as "GitHub tag (no release)".
+2. **Stable releases only.** `draft` is skipped, `prerelease: true` is skipped, and a version string carrying a prerelease suffix (such as `5.20.0-beta.1`) is skipped as well, so a missing or stale flag cannot let one through.
+3. **A tie goes to npm.** GitHub wins only when its version is **strictly newer**; when both sides carry the same version npm is used, because it installs more reliably (prebuilt output, no missing `lib/`).
 
-`repository` appears only in the full npm document, not in the compact `install-v1` one, so lookups request `Accept: application/json`.
+Only npm specs get the automatic GitHub comparison, through the `repository` field; without one, or when it is not a GitHub URL, npm alone is used. That field exists only in the full npm document, not in the compact `install-v1` one, so lookups request `Accept: application/json`.
 
-> Example: `dsh-connect-workbuddy` publishes npm 5.17.0 while GitHub already has v5.18.0. Before the fix it reported "current"; now it reports an update to 5.18.0.
+> Example: `dsh-connect-workbuddy` publishes npm 5.17.0; the repo carries a `v5.18.0` tag but **no matching release** (the newest release is v5.17.0). The old tag-based check reported an update to 5.18.0; the current rule reports 5.17.0 and, being a tie, uses npm.
 
 1. **Check latest versions** writes one log line per bundle as each lookup resolves, and the progress bar advances with it.
 2. Tick the bundles to update (all outdated rows are ticked by default), with **Select all** / **Clear selection**.

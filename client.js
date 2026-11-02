@@ -99,8 +99,10 @@ window.__ModuleLoader__.load({
       latestUnsupported: '无法查询',
       latestSourceNpm: 'npm',
       latestSourceGithub: 'GitHub',
+      latestSourceTag: 'GitHub tag（无 release）',
       latestBothSources: 'npm {npm} / GitHub {github} → 取 {winner}',
       latestWonGithub: 'GitHub 版本更新',
+      latestTieNpm: '版本相同，使用 npm',
       latestUpdateAll: '更新选中项',
       latestUpdating: '更新中…',
       latestSelectAll: '选中全部',
@@ -275,8 +277,10 @@ window.__ModuleLoader__.load({
       latestUnsupported: 'Not checkable',
       latestSourceNpm: 'npm',
       latestSourceGithub: 'GitHub',
+      latestSourceTag: 'GitHub tag (no release)',
       latestBothSources: 'npm {npm} / GitHub {github} → {winner} wins',
       latestWonGithub: 'GitHub release is newer',
+      latestTieNpm: 'Same version; npm is used',
       latestUpdateAll: 'Update selected',
       latestUpdating: 'Updating…',
       latestSelectAll: 'Select all',
@@ -999,11 +1003,18 @@ window.__ModuleLoader__.load({
                             ? t('latestBothSources', {
                                 npm: entry.npmLatest || '?',
                                 github: entry.githubLatest || '?',
-                                winner: entry.resolvedFrom === 'github' ? t('latestSourceGithub') : t('latestSourceNpm'),
+                                winner: entry.resolvedFrom === 'tag'
+                                  ? t('latestSourceTag')
+                                  : entry.resolvedFrom === 'npm' ? t('latestSourceNpm') : t('latestSourceGithub'),
                               })
-                            : entry.source === 'github'
-                              ? t('latestSourceGithub')
-                              : t('latestSourceNpm')),
+                            : entry.githubLatest !== undefined && entry.npmLatest !== undefined
+                              && entry.githubLatest === entry.npmLatest
+                              ? t('latestTieNpm')
+                              : entry.resolvedFrom === 'tag' || entry.source === 'tag'
+                                ? t('latestSourceTag')
+                                : entry.source === 'github' || entry.source === 'release'
+                                  ? t('latestSourceGithub')
+                                  : t('latestSourceNpm')),
                       ),
                       entry.outdated === true
                         ? h('input', {

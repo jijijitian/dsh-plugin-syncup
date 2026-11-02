@@ -71,18 +71,18 @@ Gist 清单只知道“某台主机上次推送的版本”，会落后于真实
 | 来源 | 查询方式 |
 | --- | --- |
 | npm 包（`name` 或 `name@ver`） | `GET registry.npmjs.org/<name>` 的 `dist-tags.latest`；缺失时取 `versions` 里最大的版本号 |
-| GitHub 源码（`github:owner/repo#ref`） | `GET api.github.com/repos/.../tags`，取最大的版本 tag；没有 tag 时退回默认分支 HEAD 的 commit SHA |
-| npm 包 + GitHub 仓库（自动） | 从 npm 完整元数据的 `repository` 字段拿到仓库，同时查 tags，**取两者中较新的版本** |
+| GitHub 源码（`github:owner/repo#ref`） | `GET api.github.com/repos/.../releases`，取最新的**正式 release**；仓库从未发布 release 时才退回 tags |
+| npm 包 + GitHub 仓库（自动） | 从 npm 完整元数据的 `repository` 字段拿到仓库，按上面的规则查 GitHub，再与 npm 版本比较 |
 
-最后一行很重要：维护者常常先打 git tag、后发 npm，或者干脆只发 GitHub。只看 npm 会把这类插件误判为「已是最新」。现在 npm 规格的包会自动读取 `repository` 并补查 GitHub tags：
+### GitHub 侧的三条规则
 
-- 两边都有可比版本 → 取较新者，界面显示 `npm 5.17.0 / GitHub 5.18.0 → 取 GitHub`；
-- npm 没有可用版本、GitHub 有 → 用 GitHub；
-- npm 包元数据里没有 `repository`（或不是 GitHub）→ 退回只查 npm。
+1. **以 Release 为准，而不是 Tag。** 有人会先推 tag、过一阵才发布 release（甚至不发布）。直接按 tag 安装会得到 `ERR_PNPM_NO_MATCHING_VERSION`。因此有 release 时只看 release；只有仓库从没发过 release 时才退回 tag，并在界面上标注「GitHub tag（无 release）」以示区别。
+2. **只取正式版。** `draft` 直接跳过；`prerelease` 标记为 true 的跳过；版本号自身带预发布后缀（如 `5.20.0-beta.1`）的也跳过。两条判断都生效，避免标记遗漏或误标。
+3. **版本相同则用 npm。** 只有 GitHub 版本**严格更高**时才选 GitHub；两边相同则用 npm，因为 npm 安装更可靠（有预构建产物、不会缺 `lib/`）。
 
-`repository` 只出现在 npm 的完整元数据里，`install-v1` 精简文档不含该字段，因此查询改用 `Accept: application/json`。
+补充：npm 规格的包才会自动补查 GitHub（通过 `repository` 字段）；`repository` 不存在或不是 GitHub 时退回只查 npm。该字段只出现在完整元数据里，`install-v1` 精简文档不含它，因此查询使用 `Accept: application/json`。
 
-> 实例：`dsh-connect-workbuddy` 的 npm 最新为 5.17.0，GitHub 已有 v5.18.0。修复前判定为「已是最新」；修复后正确识别为可更新到 5.18.0。
+> 实例：`dsh-connect-workbuddy` 的 npm 最新为 5.17.0，仓库里有 `v5.18.0` 的 tag 但**没有对应 release**（最新 release 是 v5.17.0）。旧逻辑按 tag 判定可升到 5.18.0；现在正确判定为 5.17.0，且版本相同故使用 npm。
 
 流程：
 
