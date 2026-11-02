@@ -103,6 +103,11 @@ window.__ModuleLoader__.load({
       latestBothSources: 'npm {npm} / GitHub {github} → 取 {winner}',
       latestWonGithub: 'GitHub 版本更新',
       latestTieNpm: '版本相同，使用 npm',
+      channelAuto: '自动（{version}）',
+      channelNpm: 'npm（{version}）',
+      channelGithub: 'GitHub（{version}）',
+      channelSkip: '不更新',
+      channelUnavailable: '无',
       latestUpdateAll: '更新选中项',
       latestUpdating: '更新中…',
       latestSelectAll: '选中全部',
@@ -281,6 +286,11 @@ window.__ModuleLoader__.load({
       latestBothSources: 'npm {npm} / GitHub {github} → {winner} wins',
       latestWonGithub: 'GitHub release is newer',
       latestTieNpm: 'Same version; npm is used',
+      channelAuto: 'Auto ({version})',
+      channelNpm: 'npm ({version})',
+      channelGithub: 'GitHub ({version})',
+      channelSkip: 'Do not update',
+      channelUnavailable: 'n/a',
       latestUpdateAll: 'Update selected',
       latestUpdating: 'Updating…',
       latestSelectAll: 'Select all',
@@ -426,6 +436,7 @@ window.__ModuleLoader__.load({
 .dsh-ps-progress{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 .dsh-ps-progress-track{height:6px;border-radius:3px;background:var(--dsw-alias-border-l1);overflow:hidden}
 .dsh-ps-progress-bar{height:100%;border-radius:3px;background:var(--dsw-alias-state-business-primary);transition:width .25s ease}
+.dsh-ps-choices{display:flex;align-items:center;gap:8px;flex-shrink:0}
 @media(max-width:640px){.dsh-ps-grid{grid-template-columns:minmax(0,1fr)}.dsh-ps-entry-head{flex-direction:column;align-items:stretch}.dsh-ps-select{width:100%}}
 `
 
@@ -544,6 +555,7 @@ window.__ModuleLoader__.load({
       const [latestUpdating, setLatestUpdating] = React.useState(false)
       const [latestMessage, setLatestMessage] = React.useState(null)
       const [latestApplied, setLatestApplied] = React.useState(null)
+      const [latestChannel, setLatestChannel] = React.useState({})
       const [manualOpen, setManualOpen] = React.useState(true)
 
       const pollJob = React.useCallback(async () => {
@@ -724,13 +736,20 @@ window.__ModuleLoader__.load({
         setShowLog(true)
         void pollJob()
         try {
-          const data = await call('latest', { method: 'POST', body: { names } })
+          // Only the explicit npm/github picks are sent; "auto" lets the host decide.
+          const channels = {}
+          for (const name of names) {
+            const value = latestChannel[name]
+            if (value === 'npm' || value === 'github') channels[name] = value
+          }
+          const data = await call('latest', { method: 'POST', body: { names, channels } })
           setLatestMessage(data.ok
             ? t('latestDone', { count: data.totalApplied })
             : t('applyPartial', { failed: data.failed.length }))
           setLatestApplied(data)
           setLatest(null)
           setLatestPicked({})
+          setLatestChannel({})
         } catch (failure) {
           setError(t('actionFailed', { message: failure.message }))
         } finally {
@@ -1017,15 +1036,39 @@ window.__ModuleLoader__.load({
                                   : t('latestSourceNpm')),
                       ),
                       entry.outdated === true
-                        ? h('input', {
-                            type: 'checkbox',
-                            checked: latestPicked[entry.name] === true,
-                            disabled: latestUpdating,
-                            onChange: (event) => {
-                              const value = event.target.checked
-                              setLatestPicked((current) => ({ ...current, [entry.name]: value }))
+                        ? h('div', { className: 'dsh-ps-choices' },
+                            h('select', {
+                              className: 'dsh-ps-select',
+                              value: latestChannel[entry.name] ?? 'auto',
+                              disabled: latestUpdating,
+                              onChange: (event) => {
+                                const value = event.target.value
+                                setLatestChannel((current) => ({ ...current, [entry.name]: value }))
+                                // Choosing "skip" also unticks the row.
+                                setLatestPicked((current) => ({ ...current, [entry.name]: value !== 'skip' }))
+                              },
                             },
-                          })
+                            h('option', { value: 'auto' }, t('channelAuto', {
+                              version: entry.latest ?? '?',
+                            })),
+                            h('option', { value: 'npm', disabled: (entry.channels?.npm ?? null) === null }, t('channelNpm', {
+                              version: entry.channels?.npm ?? t('channelUnavailable'),
+                            })),
+                            h('option', { value: 'github', disabled: (entry.channels?.github ?? null) === null }, t('channelGithub', {
+                              version: entry.channels?.github ?? t('channelUnavailable'),
+                            })),
+                            h('option', { value: 'skip' }, t('channelSkip')),
+                            ),
+                            h('input', {
+                              type: 'checkbox',
+                              checked: latestPicked[entry.name] === true,
+                              disabled: latestUpdating,
+                              onChange: (event) => {
+                                const value = event.target.checked
+                                setLatestPicked((current) => ({ ...current, [entry.name]: value }))
+                              },
+                            }),
+                          )
                         : h('span', { className: `dsh-ps-badge ${entry.error === undefined ? 'ok' : 'warn'}` },
                             entry.error === undefined ? t('latestCurrent') : t('latestUnsupported')),
                     ),

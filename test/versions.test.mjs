@@ -369,6 +369,61 @@ test('the tag fallback is reported to the caller', async () => {
   assert.deepEqual(seen, [['r', 'no-stable-release']])
 })
 
+test('a platform build is never picked even when its number is higher', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { tag_name: 'v2.0.0+win', draft: false, prerelease: false, published_at: '2026-09-20T11:56:37Z' },
+        { tag_name: 'v0.4.2', draft: false, prerelease: false, published_at: '2026-10-11T12:25:56Z' },
+        { tag_name: 'v0.4.1', draft: false, prerelease: false, published_at: '2026-10-11T07:32:38Z' },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '0.4.2')
+  assert.notEqual(found.latest, '2.0.0')
+})
+
+test('the newest release is the one published last, not the highest number', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        // 0.9.0 was published after 1.0.0: the project went back to the 0.x line.
+        { tag_name: 'v1.0.0', draft: false, prerelease: false, published_at: '2026-01-10T00:00:00Z' },
+        { tag_name: 'v0.9.0', draft: false, prerelease: false, published_at: '2026-06-01T00:00:00Z' },
+      ],
+    }),
+  })
+  const found = await checker.latestFor('github:o/r')
+  assert.equal(found.latest, '0.9.0')
+  assert.equal(found.publishedAt, '2026-06-01T00:00:00.000Z')
+})
+
+test('channels report what each source offers', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v2.0.0', draft: false, prerelease: false }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '1.0.0' },
+          repository: { url: 'git+https://github.com/o/r.git' },
+        }),
+      }
+    },
+  })
+  const found = await checker.latestFor('pkg@1.0.0')
+  assert.deepEqual(found.channels, { npm: '1.0.0', github: '2.0.0' })
+  assert.equal(found.latest, '2.0.0')
+})
+
 test('a network failure is reported, not thrown', async () => {
   const checker = createVersionChecker({
     fetchImpl: async () => {

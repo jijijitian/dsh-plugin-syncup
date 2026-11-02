@@ -95,21 +95,37 @@ The Gist only knows what some host last pushed, so it can lag the real release: 
 | GitHub (`github:owner/repo#ref`) | `GET /repos/.../releases`, taking the newest **stable release**; tags are only used when the repo has never published one |
 | npm package + GitHub repo (automatic) | reads `repository` from the full npm metadata, asks GitHub by the rule above, then compares with the npm version |
 
-### Three GitHub rules
+### Four GitHub rules
 
 1. **Releases, not tags.** Maintainers push a tag and publish the matching release later — or never. Installing from the newest tag can fail with `ERR_PNPM_NO_MATCHING_VERSION`. Releases decide whenever they exist; the tag fallback runs only when the release list was **read successfully** and is genuinely empty, and the page marks that case as "GitHub tag (no release)".
    - A failed release request (rate limit, network, auth) is **not** treated as "no releases". It reports an error instead of quietly switching to tags — otherwise one API rate limit would silently reintroduce tag-based updates.
-2. **Stable releases only.** `draft` is skipped, `prerelease: true` is skipped, and a version string carrying a prerelease suffix (such as `5.20.0-beta.1` or `0.5.0-alpha4`) is skipped as well, so a missing or stale flag cannot let one through.
-3. **A tie goes to npm.** GitHub wins only when its version is **strictly newer**; when both sides carry the same version npm is used, because it installs more reliably (prebuilt output, no missing `lib/`).
+2. **Newest by publish date, not by version number.** A repo can publish a high-numbered build early and later continue a lower line, so the highest semver is not the newest code. The default is the release with the latest `published_at`; the version comparison is used only when timestamps are unavailable (a tag list carries none).
+3. **Stable releases only, platform builds filtered.** `draft` is skipped, `prerelease: true` is skipped, a version carrying a prerelease suffix (`5.20.0-beta.1`, `0.5.0-alpha4`) is skipped, and so is a build with `+` metadata (`v2.0.0+win`, `1.0.0+linux-x64`) — semver treats those as the base version, and they are per-platform builds rather than the project's newest release.
+4. **A tie goes to npm.** GitHub wins only when its version is **strictly newer**; when both sides carry the same version npm is used, because it installs more reliably (prebuilt output, no missing `lib/`).
 
 Only npm specs get the automatic GitHub comparison, through the `repository` field; without one, or when it is not a GitHub URL, npm alone is used. That field exists only in the full npm document, not in the compact `install-v1` one, so lookups request `Accept: application/json`.
 
 > Example 1: `dsh-connect-workbuddy` publishes npm 5.17.0; the repo carries a `v5.18.0` tag but **no matching release** (the newest release is v5.17.0). The old tag-based check reported an update to 5.18.0; the current rule reports 5.17.0 and, being a tie, uses npm.
 >
 > Example 2: `dsh-ops` publishes `v0.5.0-alpha4` as its newest release (flagged prerelease); the newest stable release is `v0.4.4`. It now reports 0.4.4 instead of an alpha.
+>
+> Example 3: `dsh-whale-widget` shipped `v2.0.0+win` on 2026-09-20 and `v0.4.2` on 2026-10-11. Version ordering picks `2.0.0`; publish-date ordering with the platform filter picks **0.4.2**.
+
+### Choosing a channel per bundle
+
+The automatic rule is a default suggestion. Every outdated row carries a channel selector:
+
+| Option | Meaning |
+| --- | --- |
+| Auto ({version}) | Use the automatic resolution described above |
+| npm ({version}) | Install that version from the registry |
+| GitHub ({version}) | Install that release from the repository |
+| Do not update | Skip this row |
+
+When a channel has no usable version the option is disabled and shows "n/a". The checkbox follows the selector: choosing "Do not update" unticks the row.
 
 1. **Check latest versions** writes one log line per bundle as each lookup resolves, and the progress bar advances with it.
-2. Tick the bundles to update (all outdated rows are ticked by default), with **Select all** / **Clear selection**.
+2. Tick the bundles to update and pick a channel per row if needed (with **Select all** / **Clear selection** for bulk changes).
 3. **Update selected** re-checks **only the selected bundles** and installs them; the progress bar and log describe exactly those rows, and the install goes through the same probe → remove → install → rollback protection.
 
 On scope: an update is a targeted action, so it neither reuses a profile-wide result nor rescans the whole profile. The log starts with `checking N selected bundle(s)`, where `N` is the number of selected rows.
