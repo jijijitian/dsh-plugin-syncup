@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   createVersionChecker,
   gitHubTargetOf,
+  gitHubTargetOfRepository,
   newestTag,
   registryNameOf,
 } from '../lib/versions.js'
@@ -105,6 +106,94 @@ test('checkAll marks outdated entries and keeps failures separate', async () => 
   assert.equal(results[1].outdated, false)
   assert.equal(results[2].error, 'not-found')
   assert.equal(results[3].error, 'unsupported')
+})
+
+test('gitHubTargetOfRepository reads package metadata repository fields', () => {
+  assert.deepEqual(
+    gitHubTargetOfRepository({ url: 'git+https://github.com/dingminhua/dsh-connect-workbuddy.git', type: 'git' }),
+    { owner: 'dingminhua', repo: 'dsh-connect-workbuddy', ref: '' },
+  )
+  assert.deepEqual(gitHubTargetOfRepository('git+https://github.com/o/r.git'), { owner: 'o', repo: 'r', ref: '' })
+  assert.deepEqual(gitHubTargetOfRepository('o/r'), { owner: 'o', repo: 'r', ref: '' })
+  assert.equal(gitHubTargetOfRepository('https://gitlab.com/o/r.git'), null)
+  assert.equal(gitHubTargetOfRepository(null), null)
+  assert.equal(gitHubTargetOfRepository(''), null)
+})
+
+test('an npm spec also consults the repository and keeps the newer version', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/repos/')) {
+        // The git tag is ahead of the published release.
+        return { ok: true, status: 200, json: async () => [{ name: 'v5.18.0', commit: { sha: 'aaa' } }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '5.17.0' },
+          repository: { url: 'git+https://github.com/dingminhua/dsh-connect-workbuddy.git' },
+        }),
+      }
+    },
+  })
+  const found = await checker.latestFor('dsh-connect-workbuddy@5.17.0')
+  assert.equal(found.latest, '5.18.0')
+  assert.equal(found.source, 'github')
+  assert.equal(found.npmLatest, '5.17.0')
+  assert.equal(found.githubLatest, '5.18.0')
+})
+
+test('an npm spec keeps the npm version when it is the newer one', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/repos/')) {
+        return { ok: true, status: 200, json: async () => [{ name: 'v1.2.0', commit: { sha: 'bbb' } }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '1.9.0' },
+          repository: { url: 'git+https://github.com/o/r.git' },
+        }),
+      }
+    },
+  })
+  const found = await checker.latestFor('pkg@1.0.0')
+  assert.equal(found.latest, '1.9.0')
+  assert.equal(found.source, 'npm')
+})
+
+test('an npm package without repository metadata reports only npm', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '2.0.0' } }) }),
+  })
+  const found = await checker.latestFor('pkg@1.0.0')
+  assert.equal(found.latest, '2.0.0')
+  assert.equal(found.kind, 'npm')
+  assert.equal(found.githubLatest, undefined)
+})
+
+test('checkAll flags an npm package as outdated when only the git tag moved', async () => {
+  const checker = createVersionChecker({
+    fetchImpl: async (url) => {
+      if (url.includes('/repos/')) return { ok: true, status: 200, json: async () => [{ name: 'v5.18.0' }] }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '5.17.0' },
+          repository: { url: 'git+https://github.com/dingminhua/dsh-connect-workbuddy.git' },
+        }),
+      }
+    },
+  })
+  const [result] = await checker.checkAll([
+    { name: 'dsh-connect-workbuddy', spec: 'dsh-connect-workbuddy@5.17.0', version: '5.17.0' },
+  ])
+  assert.equal(result.outdated, true)
+  assert.equal(result.latest, '5.18.0')
 })
 
 test('a network failure is reported, not thrown', async () => {

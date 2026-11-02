@@ -93,6 +93,17 @@ The Gist only knows what some host last pushed, so it can lag the real release: 
 | --- | --- |
 | npm (`name` or `name@ver`) | `dist-tags.latest` from `registry.npmjs.org/<name>`; falls back to the highest listed version |
 | GitHub (`github:owner/repo#ref`) | the highest version tag under `/repos/.../tags`; falls back to the default-branch HEAD sha when a repo has no tags |
+| npm package + GitHub repo (automatic) | reads `repository` from the full npm metadata and also asks for tags, then **keeps the newer of the two** |
+
+That last row matters: maintainers often tag a release in git before publishing to npm, or publish only to GitHub. Looking at npm alone would call such a bundle "current". An npm spec now resolves its `repository` and checks GitHub tags too:
+
+- both sides comparable → the newer wins, and the page shows `npm 5.17.0 / GitHub 5.18.0 → GitHub wins`;
+- npm has no usable version but GitHub does → GitHub is used;
+- no `repository`, or it is not a GitHub URL → npm only.
+
+`repository` appears only in the full npm document, not in the compact `install-v1` one, so lookups request `Accept: application/json`.
+
+> Example: `dsh-connect-workbuddy` publishes npm 5.17.0 while GitHub already has v5.18.0. Before the fix it reported "current"; now it reports an update to 5.18.0.
 
 1. **Check latest versions** writes one log line per bundle as each lookup resolves, and the progress bar advances with it.
 2. Tick the bundles to update (all outdated rows are ticked by default), with **Select all** / **Clear selection**.

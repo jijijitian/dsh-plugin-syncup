@@ -99,6 +99,8 @@ window.__ModuleLoader__.load({
       latestUnsupported: '无法查询',
       latestSourceNpm: 'npm',
       latestSourceGithub: 'GitHub',
+      latestBothSources: 'npm {npm} / GitHub {github} → 取 {winner}',
+      latestWonGithub: 'GitHub 版本更新',
       latestUpdateAll: '更新选中项',
       latestUpdating: '更新中…',
       latestSelectAll: '选中全部',
@@ -273,6 +275,8 @@ window.__ModuleLoader__.load({
       latestUnsupported: 'Not checkable',
       latestSourceNpm: 'npm',
       latestSourceGithub: 'GitHub',
+      latestBothSources: 'npm {npm} / GitHub {github} → {winner} wins',
+      latestWonGithub: 'GitHub release is newer',
       latestUpdateAll: 'Update selected',
       latestUpdating: 'Updating…',
       latestSelectAll: 'Select all',
@@ -990,7 +994,16 @@ window.__ModuleLoader__.load({
                               ? `${t('latestCurrent')} · ${entry.local.version || '?'}`
                               : `${t('latestUnsupported')} · ${entry.error}`),
                         h('div', { className: 'dsh-ps-meta' },
-                          entry.source === 'github' ? t('latestSourceGithub') : t('latestSourceNpm')),
+                          entry.githubLatest !== undefined && entry.npmLatest !== undefined
+                            && entry.githubLatest !== entry.npmLatest
+                            ? t('latestBothSources', {
+                                npm: entry.npmLatest || '?',
+                                github: entry.githubLatest || '?',
+                                winner: entry.resolvedFrom === 'github' ? t('latestSourceGithub') : t('latestSourceNpm'),
+                              })
+                            : entry.source === 'github'
+                              ? t('latestSourceGithub')
+                              : t('latestSourceNpm')),
                       ),
                       entry.outdated === true
                         ? h('input', {

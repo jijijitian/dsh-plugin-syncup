@@ -72,6 +72,17 @@ Gist 清单只知道“某台主机上次推送的版本”，会落后于真实
 | --- | --- |
 | npm 包（`name` 或 `name@ver`） | `GET registry.npmjs.org/<name>` 的 `dist-tags.latest`；缺失时取 `versions` 里最大的版本号 |
 | GitHub 源码（`github:owner/repo#ref`） | `GET api.github.com/repos/.../tags`，取最大的版本 tag；没有 tag 时退回默认分支 HEAD 的 commit SHA |
+| npm 包 + GitHub 仓库（自动） | 从 npm 完整元数据的 `repository` 字段拿到仓库，同时查 tags，**取两者中较新的版本** |
+
+最后一行很重要：维护者常常先打 git tag、后发 npm，或者干脆只发 GitHub。只看 npm 会把这类插件误判为「已是最新」。现在 npm 规格的包会自动读取 `repository` 并补查 GitHub tags：
+
+- 两边都有可比版本 → 取较新者，界面显示 `npm 5.17.0 / GitHub 5.18.0 → 取 GitHub`；
+- npm 没有可用版本、GitHub 有 → 用 GitHub；
+- npm 包元数据里没有 `repository`（或不是 GitHub）→ 退回只查 npm。
+
+`repository` 只出现在 npm 的完整元数据里，`install-v1` 精简文档不含该字段，因此查询改用 `Accept: application/json`。
+
+> 实例：`dsh-connect-workbuddy` 的 npm 最新为 5.17.0，GitHub 已有 v5.18.0。修复前判定为「已是最新」；修复后正确识别为可更新到 5.18.0。
 
 流程：
 
