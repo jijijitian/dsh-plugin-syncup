@@ -920,6 +920,79 @@ test('a scoped check leaves the profile-wide cache intact', async (t) => {
   assert.equal(runtime.cachedLatest().counts.entries, full.counts.entries)
 })
 
+test('applyLatest installs from the channel the caller names', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    // npm 1.5.0 vs GitHub release 2.0.0: the two channels differ on purpose.
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v2.0.0', draft: false, prerelease: false }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '1.5.0' },
+          repository: { url: 'git+https://github.com/o/pkg.git' },
+        }),
+      }
+    },
+  })
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+  const installed = manager.bundles.find((bundle) => bundle.name === 'pkg')
+  // The npm channel must win: 1.5.0, not the GitHub-only 2.0.0.
+  assert.equal(installed.installTarget.spec, 'pkg@1.5.0')
+  assert.equal(result.applied[0].channel, 'npm')
+})
+
+test('applyLatest can force the GitHub channel for an npm-spec bundle', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async (url) => {
+      if (url.includes('/releases')) {
+        return { ok: true, status: 200, json: async () => [{ tag_name: 'v2.0.0', draft: false, prerelease: false }] }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          'dist-tags': { latest: '1.5.0' },
+          repository: { url: 'git+https://github.com/o/pkg.git' },
+        }),
+      }
+    },
+  })
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'github' } })
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+  // The GitHub channel installs the repository ref, not the registry version.
+  assert.equal(result.applied[0].spec, 'github:o/pkg#v2.0.0')
+  assert.equal(result.applied[0].channel, 'github')
+  assert.equal(manager.calls.some((call) => call.spec === 'github:o/pkg#v2.0.0'), true)
+})
+
 test('preview without a Gist id asks for one', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())

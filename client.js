@@ -1042,7 +1042,27 @@ window.__ModuleLoader__.load({
                     })),
                 ),
                 h('div', { className: 'dsh-ps-list' },
-                  latest.entries.map((entry) => h('div', { className: 'dsh-ps-entry', key: `l-${entry.name}` },
+                  latest.entries.map((entry) => {
+                    // Channel availability must not depend on `channels` alone: an
+                    // older cached result has no `channels` field at all, and
+                    // `(undefined ?? null) === null` disabled BOTH options, so no
+                    // channel could be picked.
+                    //
+                    // An `undefined` channel means "unknown" and stays selectable;
+                    // only an explicit `null` (the host looked and found nothing)
+                    // disables it. The fallbacks keep the version label meaningful
+                    // for entries that predate the `channels` field.
+                    const npmKnown = entry.channels === undefined || entry.channels === null
+                      ? undefined
+                      : entry.channels.npm
+                    const githubKnown = entry.channels === undefined || entry.channels === null
+                      ? undefined
+                      : entry.channels.github
+                    const npmChannelVersion = npmKnown ?? entry.npmLatest ?? entry.latest ?? null
+                    const githubChannelVersion = githubKnown ?? entry.githubLatest ?? entry.latest ?? null
+                    const canUseNpm = npmKnown !== null && npmChannelVersion !== null && npmChannelVersion !== 'null'
+                    const canUseGithub = githubKnown !== null && githubChannelVersion !== null && githubChannelVersion !== 'null'
+                    return h('div', { className: 'dsh-ps-entry', key: `l-${entry.name}` },
                     h('div', { className: 'dsh-ps-entry-head' },
                       h('div', null,
                         h('div', { className: 'dsh-ps-name' }, entry.name),
@@ -1087,11 +1107,11 @@ window.__ModuleLoader__.load({
                             h('option', { value: 'auto' }, t('channelAuto', {
                               version: entry.latest ?? '?',
                             })),
-                            h('option', { value: 'npm', disabled: (entry.channels?.npm ?? null) === null }, t('channelNpm', {
-                              version: entry.channels?.npm ?? t('channelUnavailable'),
+                            h('option', { value: 'npm', disabled: !canUseNpm }, t('channelNpm', {
+                              version: npmChannelVersion ?? t('channelUnavailable'),
                             })),
-                            h('option', { value: 'github', disabled: (entry.channels?.github ?? null) === null }, t('channelGithub', {
-                              version: entry.channels?.github ?? t('channelUnavailable'),
+                            h('option', { value: 'github', disabled: !canUseGithub }, t('channelGithub', {
+                              version: githubChannelVersion ?? t('channelUnavailable'),
                             })),
                             h('option', { value: 'skip' }, t('channelSkip')),
                             ),
@@ -1108,7 +1128,8 @@ window.__ModuleLoader__.load({
                         : h('span', { className: `dsh-ps-badge ${entry.error === undefined ? 'ok' : 'warn'}` },
                             entry.error === undefined ? t('latestCurrent') : t('latestUnsupported')),
                     ),
-                  )),
+                    )
+                  }),
                 ),
                 h('div', { className: 'dsh-ps-actions' },
                   h('button', {

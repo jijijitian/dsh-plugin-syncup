@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-sync",
-  "version": "3.4.1",
+  "version": "3.4.2",
   "description": "Manual GitHub Gist plugin inventory sync with a push diff plan, remove-then-install upgrades, an install log, and conflict-aware preview.",
   "type": "module",
   "icon": "icon.svg",
