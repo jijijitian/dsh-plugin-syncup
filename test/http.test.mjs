@@ -21,7 +21,7 @@ function createHarness(credentials = undefined) {
   const editor = {
     configuration() {
       return [{
-        entry: { options: { id: 'dsh-plugin-sync', config: state.current } },
+        entry: { options: { id: 'dsh-plugin-syncup', config: state.current } },
         inherited: { gistName: '' },
         override: {},
       }]
@@ -106,7 +106,7 @@ test('status route returns config snapshot without the token', async () => {
   const { routes, registrations } = createHarness()
   assert.equal(registrations.length, 8)
   assert.equal(new Set(registrations.map((route) => route.path)).size, 8)
-  const route = routes.get('/dsh-plugin-sync/api/v2/status')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/status')
   assert.ok(route)
   const response = fakeResponse()
   await route.handler(request(), response)
@@ -119,7 +119,7 @@ test('status route returns config snapshot without the token', async () => {
 
 test('config route saves allowed fields through configEditor', async () => {
   const { routes, state } = createHarness()
-  const route = routes.get('/dsh-plugin-sync/api/v2/config')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/config')
   const response = fakeResponse()
   await route.handler(request({
     method: 'POST',
@@ -148,7 +148,7 @@ test('config route stores a page-entered token in credentials', async () => {
     },
   }
   const { routes } = createHarness(credentials)
-  const route = routes.get('/dsh-plugin-sync/api/v2/config')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/config')
   const response = fakeResponse()
   await route.handler(request({
     method: 'POST',
@@ -162,7 +162,7 @@ test('config route stores a page-entered token in credentials', async () => {
 
 test('config route accepts a custom Gist name and rejects cross-origin requests', async () => {
   const { routes } = createHarness()
-  const route = routes.get('/dsh-plugin-sync/api/v2/config')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/config')
   const bad = fakeResponse()
   await route.handler(request({ method: 'POST', body: { values: { gistName: 'team-sync' } } }), bad)
   assert.equal(bad.status, 200)
@@ -174,29 +174,29 @@ test('config route accepts a custom Gist name and rejects cross-origin requests'
 
 test('jobs route returns the latest job and one job by id', async () => {
   const { routes } = createHarness()
-  const route = routes.get('/dsh-plugin-sync/api/v2/jobs')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/jobs')
   const latest = fakeResponse()
-  await route.handler(request({ url: '/dsh-plugin-sync/api/v2/jobs' }), latest)
+  await route.handler(request({ url: '/dsh-plugin-syncup/api/v2/jobs' }), latest)
   assert.equal(latest.status, 200)
   const latestBody = JSON.parse(latest.body)
   assert.equal(latestBody.latest.id, 'job-1')
   assert.equal(latestBody.jobs.length, 1)
 
   const one = fakeResponse()
-  await route.handler(request({ url: '/dsh-plugin-sync/api/v2/jobs?id=job-1' }), one)
+  await route.handler(request({ url: '/dsh-plugin-syncup/api/v2/jobs?id=job-1' }), one)
   assert.equal(one.status, 200)
   assert.equal(JSON.parse(one.body).job.id, 'job-1')
 
   const missing = fakeResponse()
-  await route.handler(request({ url: '/dsh-plugin-sync/api/v2/jobs?id=nope' }), missing)
+  await route.handler(request({ url: '/dsh-plugin-syncup/api/v2/jobs?id=nope' }), missing)
   assert.equal(missing.status, 404)
 })
 
 test('latest route restores the cached result without a new check', async () => {
   const { routes } = createHarness()
-  const route = routes.get('/dsh-plugin-sync/api/v2/latest')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/latest')
   const response = fakeResponse()
-  await route.handler(request({ url: '/dsh-plugin-sync/api/v2/latest?cached=1' }), response)
+  await route.handler(request({ url: '/dsh-plugin-syncup/api/v2/latest?cached=1' }), response)
   assert.equal(response.status, 200)
   const data = JSON.parse(response.body)
   assert.equal(data.ok, true)
@@ -206,7 +206,7 @@ test('latest route restores the cached result without a new check', async () => 
 
 test('routes enforce their method', async () => {
   const { routes } = createHarness()
-  const route = routes.get('/dsh-plugin-sync/api/v2/status')
+  const route = routes.get('/dsh-plugin-syncup/api/v2/status')
   const response = fakeResponse()
   await route.handler(request({ method: 'POST', body: {} }), response)
   assert.equal(response.status, 405)

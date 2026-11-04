@@ -7,7 +7,7 @@ import { createSyncRuntime } from './lib/sync.js'
 
 export { normalizeConfig }
 
-export const name = 'dsh-plugin-sync'
+export const name = 'dsh-plugin-syncup'
 export const inject = ['tools', 'pluginManager']
 
 const ACTIONS = new Set(['status', 'preview', 'apply', 'latest', 'push', 'plan-push', 'log'])

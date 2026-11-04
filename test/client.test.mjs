@@ -42,7 +42,7 @@ function loadClient() {
 
 test('client registers the bundle config page under the package key', () => {
   const loaded = loadClient()
-  assert.equal(loaded.id, 'dsh-plugin-sync')
+  assert.equal(loaded.id, 'dsh-plugin-syncup')
   const module = loaded.factory((name) => {
     if (name === 'react') return { createElement() {}, useState() {}, useEffect() {}, useCallback() {} }
     throw new Error(name)
@@ -73,8 +73,8 @@ test('client registers the bundle config page under the package key', () => {
   module.apply(ctx)
   assert.ok(registration !== null)
   assert.equal(registration.options.name, 'plugins.bundle.config')
-  assert.equal(registration.options.key, 'dsh-plugin-sync')
-  assert.equal(registration.options.locale, 'dsh-plugin-sync')
+  assert.equal(registration.options.key, 'dsh-plugin-syncup')
+  assert.equal(registration.options.locale, 'dsh-plugin-syncup')
   assert.equal(dictionaries.length, 1)
   assert.ok(dictionaries[0].value.zh.manualTitle)
   assert.ok(dictionaries[0].value.zh.tokenHelp)

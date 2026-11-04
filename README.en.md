@@ -1,8 +1,8 @@
-# dsh-plugin-sync
+# dsh-plugin-syncup
 
 Manual plugin-inventory sync for DeepSeek Harness (DSH) through a private **GitHub Gist**. Configure it inside the plugin page, pull the Gist, review changes and conflicts, then install only what you select.
 
-> Version 2.2.0 uses a secret Gist instead of a GitHub repository. Version 2.4.0 looks up by **Gist name** (default `dsh-plugin-sync`) and creates it on first push when missing. Version 2.0.0 is manual only: no startup sync, interval sync, or plugin-change sync.
+> Version 2.2.0 uses a secret Gist instead of a GitHub repository. Version 2.4.0 looks up by **Gist name** (default `dsh-plugin-syncup`) and creates it on first push when missing. Version 2.0.0 is manual only: no startup sync, interval sync, or plugin-change sync.
 
 ## DSH compatibility
 
@@ -13,7 +13,7 @@ Targets DSH `0.2.1-rc.3` and registers `plugins.bundle.config`, which places the
 ## Install
 
 ```text
-plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-sync
+plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-syncup
 ```
 
 ## Use

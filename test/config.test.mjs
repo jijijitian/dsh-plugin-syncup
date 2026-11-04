@@ -18,7 +18,7 @@ function fakeContext(currentRaw, inherited) {
   const editor = {
     configuration() {
       return [{
-        entry: { options: { id: 'dsh-plugin-sync', config: state.current } },
+        entry: { options: { id: 'dsh-plugin-syncup', config: state.current } },
         inherited,
         override: {},
       }]

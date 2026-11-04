@@ -5,3 +5,6 @@ state.json
 icon-preview.png
 .DS_Store
 Thumbs.db
+
+# Local npm credentials — never commit
+.npmrc

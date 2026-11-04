@@ -235,7 +235,7 @@ test('preview reads a Gist and applies only selected entries', async (t) => {
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([])
   const runtime = createSyncRuntime({
@@ -274,7 +274,7 @@ test('planPush reports the three remote/local cases without writing', async (t) 
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-shared', spec: 'dsh-shared@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -318,7 +318,7 @@ test('push with a plan resolves conflicts to the newer side and honours drops', 
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-newer-remote', spec: 'dsh-newer-remote@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -366,7 +366,7 @@ test('push with a plan keeps a remote-only bundle by default', async (t) => {
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -386,7 +386,7 @@ test('push updates an existing Gist and skips unchanged content', async (t) => {
     hosts: { 'host-a': { hostId: 'host-a', bundles: [] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-local', spec: 'dsh-local@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true, source: 'dsh-local@1.0.0' },
@@ -411,7 +411,7 @@ test('push updates an existing Gist and skips unchanged content', async (t) => {
 test('push with no Gist id creates a secret Gist and remembers it', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -437,7 +437,7 @@ test('apply removes a local-only bundle when the user chooses remove', async (t)
     hosts: { remote: { bundles: [] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-orphan', spec: 'dsh-orphan@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true, source: 'dsh-orphan@1.0.0' },
@@ -475,7 +475,7 @@ test('apply records a job log with per-item progress', async (t) => {
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -508,7 +508,7 @@ test('an upgrade removes the installed copy first when the manager refuses a re-
     hosts: { remote: { bundles: [{ name: 'dsh-extra', spec: 'dsh-extra@2.0.0', version: '2.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -541,7 +541,7 @@ test('a failed upgrade restores the previous version', async (t) => {
     hosts: { remote: { bundles: [{ name: 'dsh-extra', spec: 'dsh-extra@2.0.0', version: '2.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -570,13 +570,13 @@ test('a failed upgrade restores the previous version', async (t) => {
 test('the plugin refuses to update or remove itself', async (t) => {
   const mock = await startMock({
     schemaVersion: 1,
-    hosts: { remote: { bundles: [{ name: 'dsh-plugin-sync', spec: 'dsh-plugin-sync@3.0.0', version: '3.0.0', enabled: true }] } },
+    hosts: { remote: { bundles: [{ name: 'dsh-plugin-syncup', spec: 'dsh-plugin-syncup@3.0.0', version: '3.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
-    { name: 'dsh-plugin-sync', spec: 'dsh-plugin-sync@2.5.1', version: '2.5.1', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-plugin-syncup', spec: 'dsh-plugin-syncup@2.5.1', version: '2.5.1', availability: 'profile', installed: true, enabled: true, removable: true },
   ], { hmr: true })
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -586,13 +586,13 @@ test('the plugin refuses to update or remove itself', async (t) => {
     env: {},
   })
   const preview = await runtime.preview()
-  assert.equal(findEntry(preview, 'dsh-plugin-sync').kind, 'upgrade')
-  const result = await runtime.apply(preview.previewId, { 'dsh-plugin-sync': 'remote' })
+  assert.equal(findEntry(preview, 'dsh-plugin-syncup').kind, 'upgrade')
+  const result = await runtime.apply(preview.previewId, { 'dsh-plugin-syncup': 'remote' })
 
   assert.equal(result.ok, false)
   assert.equal(result.failed[0].code, 'self-update')
   assert.equal(manager.calls.length, 0)
-  assert.equal(manager.bundles[0].spec, 'dsh-plugin-sync@2.5.1')
+  assert.equal(manager.bundles[0].spec, 'dsh-plugin-syncup@2.5.1')
 })
 
 test('a refusal without a message is reported as readable text', async (t) => {
@@ -601,7 +601,7 @@ test('a refusal without a message is reported as readable text', async (t) => {
     hosts: { remote: { bundles: [{ name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([], {})
   manager.installBundle = async () => ({
@@ -633,7 +633,7 @@ test('a bundle HMR cannot unload keeps its profile selection and is remembered',
     hosts: { remote: { bundles: [{ name: 'dsh-stuck', spec: 'dsh-stuck@2.0.0', version: '2.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-stuck', spec: 'dsh-stuck@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -666,7 +666,7 @@ test('a remembered bundle is skipped and marked on the next preview', async (t) 
     hosts: { remote: { bundles: [{ name: 'dsh-stuck', spec: 'dsh-stuck@2.0.0', version: '2.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-stuck', spec: 'dsh-stuck@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -699,7 +699,7 @@ test('a successful upgrade clears the manual-update record', async (t) => {
     hosts: { remote: { bundles: [{ name: 'dsh-extra', spec: 'dsh-extra@2.0.0', version: '2.0.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -720,7 +720,7 @@ test('a successful upgrade clears the manual-update record', async (t) => {
 test('checkLatest reports outdated bundles from the source, not the manifest', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -755,7 +755,7 @@ test('applyLatest installs the newest release instead of the manifest version', 
     hosts: { remote: { bundles: [{ name: 'dsh-old', spec: 'dsh-old@1.1.0', version: '1.1.0', enabled: true }] } },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -781,7 +781,7 @@ test('applyLatest installs the newest release instead of the manifest version', 
 test('applyLatest skips bundles that are already current', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -801,7 +801,7 @@ test('applyLatest skips bundles that are already current', async (t) => {
 test('a cold applyLatest checks versions itself instead of tripping its own lock', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-old', spec: 'dsh-old@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -823,7 +823,7 @@ test('a cold applyLatest checks versions itself instead of tripping its own lock
 test('a version check logs each bundle as it resolves', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-a', spec: 'dsh-a@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -858,7 +858,7 @@ test('a version check logs each bundle as it resolves', async (t) => {
 test('applyLatest checks only the selected bundles', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'picked', spec: 'picked@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -897,7 +897,7 @@ test('applyLatest checks only the selected bundles', async (t) => {
 test('a scoped check leaves the profile-wide cache intact', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'a', spec: 'a@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -923,7 +923,7 @@ test('a scoped check leaves the profile-wide cache intact', async (t) => {
 test('applyLatest installs from the channel the caller names', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -960,7 +960,7 @@ test('applyLatest installs from the channel the caller names', async (t) => {
 test('applyLatest can force the GitHub channel for an npm-spec bundle', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
@@ -996,7 +996,7 @@ test('applyLatest can force the GitHub channel for an npm-spec bundle', async (t
 test('preview without a Gist id asks for one', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
@@ -1016,7 +1016,7 @@ test('without a token preview and apply still work but push fails', async (t) =>
     },
   })
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([])
   const runtime = createSyncRuntime({
@@ -1036,7 +1036,7 @@ test('without a token preview and apply still work but push fails', async (t) =>
 test('invalid Gist JSON is rejected without a write', async (t) => {
   const mock = await startMock('{not json')
   t.after(() => mock.close())
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-sync-'))
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),

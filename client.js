@@ -1,9 +1,9 @@
 window.__ModuleLoader__.load({
-  id: 'dsh-plugin-sync',
+  id: 'dsh-plugin-syncup',
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const NS = 'dsh-plugin-sync'
+    const NS = 'dsh-plugin-syncup'
 
     const zh = {
       summary: '默认使用 Gist 名称 dsh-plugin-sync；首次推送会自动创建。',
@@ -447,7 +447,7 @@ window.__ModuleLoader__.load({
     const TOKEN_URL = 'https://github.com/settings/tokens/new?description=DSH%20Plugin%20Sync&scopes=gist'
 
     function endpoint(name) {
-      return new URL(`dsh-plugin-sync/api/v2/${name}`, document.baseURI).pathname
+      return new URL(`dsh-plugin-syncup/api/v2/${name}`, document.baseURI).pathname
     }
 
     async function call(name, { method = 'GET', body } = {}) {
@@ -1496,7 +1496,7 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'plugin-sync: dictionaries')
         ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
           name: 'plugins.bundle.config',
-          key: 'dsh-plugin-sync',
+          key: 'dsh-plugin-syncup',
           locale: NS,
           inject: () => ({ t }),
         }, ConfigPage))

@@ -1,4 +1,4 @@
-# dsh-plugin-sync
+# dsh-plugin-syncup
 
 通过一个私有 **GitHub Gist** 在不同主机之间同步 DeepSeek Harness（DSH）的插件清单：
 
@@ -21,10 +21,10 @@
 ## 安装
 
 ```text
-plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-sync
+plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-syncup
 ```
 
-安装后打开 **插件 → 已安装插件 → dsh-plugin-sync**，即可看到配置与手动同步面板。每台主机都需要先安装一次本插件；它不会自动安装自己。
+安装后打开 **插件 → 已安装插件 → dsh-plugin-syncup**，即可看到配置与手动同步面板。每台主机都需要先安装一次本插件；它不会自动安装自己。
 
 > **从 1.x 升级或首次启用页面时请重启 DSH。** DSH 的 client-modules 会按 Loader 条目缓存包元数据直到进程重启；如果先安装过没有 `dsh.client` 的 1.0，再安装 2.x，页面不会立即出现配置面板，重启一次后才会扫描到新的客户端半。之后普通刷新页面即可。
 
@@ -288,7 +288,7 @@ dsh 0.2.1 的插件管理器在存在 `hmr` 服务时，只要包已经在 profi
 ```json
 {
   "schemaVersion": 1,
-  "generatedBy": "dsh-plugin-sync",
+  "generatedBy": "dsh-plugin-syncup",
   "updatedAt": "2026-10-26T00:00:00.000Z",
   "lastWriter": "work-pc",
   "hosts": {

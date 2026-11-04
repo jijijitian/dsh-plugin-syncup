@@ -1,7 +1,7 @@
 {
-  "name": "dsh-plugin-sync",
-  "version": "3.4.2",
-  "description": "Manual GitHub Gist plugin inventory sync with a push diff plan, remove-then-install upgrades, an install log, and conflict-aware preview.",
+  "name": "dsh-plugin-syncup",
+  "version": "4.0.0",
+  "description": "Sync plugin inventories through a secret GitHub Gist and update every plugin to its newest release, with conflict-aware preview and an install log.",
   "type": "module",
   "icon": "icon.svg",
   "exports": {
@@ -46,10 +46,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jijijitian/dsh-plugin-sync.git"
+    "url": "git+https://github.com/jijijitian/dsh-plugin-syncup.git"
   },
-  "homepage": "https://github.com/jijijitian/dsh-plugin-sync",
+  "homepage": "https://github.com/jijijitian/dsh-plugin-syncup",
   "bugs": {
-    "url": "https://github.com/jijijitian/dsh-plugin-sync/issues"
+    "url": "https://github.com/jijijitian/dsh-plugin-syncup/issues"
   }
 }
