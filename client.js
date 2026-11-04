@@ -553,6 +553,9 @@ window.__ModuleLoader__.load({
       const [latestPicked, setLatestPicked] = React.useState({})
       const [checking, setChecking] = React.useState(false)
       const [latestUpdating, setLatestUpdating] = React.useState(false)
+      // Which flags belong to a request this page started, so the job-adoption
+      // effect cannot clear them mid-flight (see the effect below).
+      const pendingRef = React.useRef({ check: false, update: false })
       const [latestMessage, setLatestMessage] = React.useState(null)
       const [latestApplied, setLatestApplied] = React.useState(null)
       const [latestChannel, setLatestChannel] = React.useState({})
@@ -601,6 +604,10 @@ window.__ModuleLoader__.load({
 
       // Restore the last version check so returning to the page shows the real
       // state instead of an empty tab or a spurious error.
+      //
+      // Runs once per mount: a later `status` refresh (for example the one the
+      // click handler triggers in its `finally`) must not replace a result the
+      // user just received with an older cached copy.
       const restoredRef = React.useRef(false)
       React.useEffect(() => {
         if (restoredRef.current || status === null) return
@@ -610,12 +617,16 @@ window.__ModuleLoader__.load({
           try {
             const data = await call('latest?cached=1')
             if (data.cached !== true) return
-            setLatest(data)
-            const picked = {}
-            for (const entry of data.entries) {
-              if (entry.outdated === true) picked[entry.name] = true
-            }
-            setLatestPicked(picked)
+            // A check that finished first wins; the cached copy is only a fallback.
+            setLatest((current) => (current === null ? data : current))
+            setLatestPicked((current) => {
+              if (Object.keys(current).length > 0) return current
+              const picked = {}
+              for (const entry of data.entries) {
+                if (entry.outdated === true) picked[entry.name] = true
+              }
+              return picked
+            })
           } catch {
             // A restore failure must not surface as an operation error.
           }
@@ -624,17 +635,36 @@ window.__ModuleLoader__.load({
 
       // A page mounted while the Host is still working must resume the running
       // job instead of reporting an idle state or firing a conflicting request.
+      //
+      // This both arms AND clears the flags. An earlier version only ever set
+      // them: once a check finished, the button stayed on "checking" forever and
+      // the finished result was never rendered.
+      //
+      // A flag in `pendingRef` belongs to a request this page fired; it is
+      // cleared by that request's own `finally`, never by this effect. Only flags
+      // adopted from a job (this page did not start it) are managed here.
       React.useEffect(() => {
-        if (status?.busy !== true) return
-        setShowLog(true)
-        if (job?.status === 'running' && job.kind === 'apply-latest') setLatestUpdating(true)
-        if (job?.status === 'running' && job.kind === 'check') setChecking(true)
-      }, [status?.busy, job?.status, job?.kind])
+        if (status?.busy === true) setShowLog(true)
+        const kind = job?.kind
+        const running = job?.status === 'running'
+        if (!running) {
+          if (pendingRef.current.check !== true) setChecking(false)
+          if (pendingRef.current.update !== true) setLatestUpdating(false)
+          return
+        }
+        if (kind === 'check' && pendingRef.current.check !== true) setChecking(true)
+        if (kind === 'apply-latest' && pendingRef.current.update !== true) setLatestUpdating(true)
+      }, [status?.busy, job?.status, job?.kind, job?.id, job?.finishedAt])
 
       // While the Host is busy the buttons must stay disabled: pressing one would
       // only produce a "another operation is already running" error that
       // contradicts the progress the user is watching.
-      const hostBusy = status?.busy === true
+      // While the Host is busy the buttons must stay disabled: pressing one would
+      // only produce a "another operation is already running" error. This reads
+      // the *live* job too, because `status.busy` only refreshes on a poll: a
+      // just-finished check would otherwise leave the buttons dead until the next
+      // refresh, which reads as "stuck".
+      const hostBusy = status?.busy === true && job?.status === 'running'
 
       if (view === 'summary') return h('span', { className: 'dsh-ps-muted' }, t('summary'))
 
@@ -705,6 +735,7 @@ window.__ModuleLoader__.load({
       }
 
       const checkLatest = async () => {
+        pendingRef.current.check = true
         setChecking(true)
         setError(null)
         setLatestMessage(null)
@@ -721,8 +752,11 @@ window.__ModuleLoader__.load({
         } catch (failure) {
           setError(t('actionFailed', { message: failure.message }))
         } finally {
+          pendingRef.current.check = false
           setChecking(false)
           void pollJob()
+          // Refresh `busy` right away: until `loadStatus` resolves, `hostBusy`
+          // still reads the pre-check value and would keep the buttons disabled.
           void loadStatus()
         }
       }
@@ -730,6 +764,7 @@ window.__ModuleLoader__.load({
       const updateLatest = async () => {
         const names = Object.keys(latestPicked).filter((name) => latestPicked[name] === true)
         if (names.length === 0) return
+        pendingRef.current.update = true
         setLatestUpdating(true)
         setError(null)
         setLatestMessage(null)
@@ -753,6 +788,7 @@ window.__ModuleLoader__.load({
         } catch (failure) {
           setError(t('actionFailed', { message: failure.message }))
         } finally {
+          pendingRef.current.update = false
           setLatestUpdating(false)
           void pollJob()
           void loadStatus()

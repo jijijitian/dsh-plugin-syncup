@@ -82,3 +82,31 @@ test('client registers the bundle config page under the package key', () => {
   assert.match(source, /settings\/tokens\/new\?description=DSH%20Plugin%20Sync&scopes=gist/)
   assert.ok(dictionaries[0].value.en.manualTitle)
 })
+
+test('the job-adoption effect can clear its flags, not only set them', () => {
+  // A regression guard for a real "stuck on 检查中" bug: the effect used to call
+  // setChecking(true) with no path that ever set it back to false, so the button
+  // never recovered and the finished result was never rendered.
+  const effect = source.slice(
+    source.indexOf('React.useEffect(() => {', source.indexOf('pendingRef')),
+    source.indexOf('}, [status?.busy, job?.status'),
+  )
+  assert.ok(effect.length > 0, 'the adoption effect is present')
+  assert.match(effect, /setChecking\(false\)/, 'it clears the checking flag')
+  assert.match(effect, /setLatestUpdating\(false\)/, 'it clears the updating flag')
+  // ...and it must not clear a flag whose request this page still has in flight.
+  assert.match(effect, /pendingRef\.current\.check !== true/)
+  assert.match(effect, /pendingRef\.current\.update !== true/)
+})
+
+test('hostBusy requires a live job so a finished check does not dead-lock the buttons', () => {
+  assert.match(source, /const hostBusy = status\?\.busy === true && job\?\.status === 'running'/)
+  // The click handlers must clear their own pending flag in `finally`.
+  assert.match(source, /pendingRef\.current\.check = false/)
+  assert.match(source, /pendingRef\.current\.update = false/)
+})
+
+test('a finished check is not overwritten by the cached restore', () => {
+  // Restoring must yield to a result the user already received.
+  assert.match(source, /setLatest\(\(current\) => \(current === null \? data : current\)\)/)
+})
