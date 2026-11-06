@@ -134,12 +134,15 @@ function makeConfig(overrides = {}) {
 }
 
 class FakeManager {
-  constructor(bundles, { hmr = false, failInstall = null, stuck = [] } = {}) {
+  constructor(bundles, { hmr = false, failInstall = null, stuck = [], failUpdate = null, nativeUpdate = true } = {}) {
     this.bundles = bundles
     this.calls = []
     this.hmr = hmr
     this.failInstall = failInstall
+    this.failUpdate = failUpdate
     this.stuck = new Set(stuck)
+    // dsh < 0.2.2 has no updateBundle. Tests for the manual fallback drop it.
+    if (nativeUpdate === false) this.updateBundle = undefined
     this.present = new Set(bundles.map((bundle) => bundle.name))
     this.selected = new Set(bundles.map((bundle) => bundle.name))
   }
@@ -202,6 +205,37 @@ class FakeManager {
     this.bundles = this.bundles.filter((item) => item.name !== name)
     this.present.delete(name)
     return { changed: true, application: 'applied', stage: 'remove', target: name, warnings: [] }
+  }
+
+  /**
+   * dsh 0.2.2's own replace path. Mirrors the real shape: remove, install, and a
+   * restore when the install fails.
+   */
+  async updateBundle(name, version) {
+    this.calls.push({ updated: name, version })
+    const bundle = this.bundles.find((item) => item.name === name)
+    if (bundle === undefined) {
+      return { from: '', to: version, step: 'check', result: { changed: false, application: 'failed', error: { code: 'unknown-plugin' } } }
+    }
+    const from = bundle.version
+    if (this.failUpdate !== null && this.failUpdate(name, version) === true) {
+      return {
+        from,
+        to: version,
+        step: 'install',
+        result: { changed: false, application: 'failed', stage: 'install', target: name, error: { code: 'incompatible-version' } },
+        restore: { changed: true, application: 'applied', stage: 'install', target: name },
+      }
+    }
+    bundle.version = version
+    bundle.installTarget = { spec: `${name}@${version}` }
+    bundle.source = `${name}@${version}`
+    return {
+      from,
+      to: version,
+      step: 'install',
+      result: { changed: true, application: 'applied', stage: 'install', target: name },
+    }
   }
 
   isSelected(name) {
@@ -512,7 +546,7 @@ test('an upgrade removes the installed copy first when the manager refuses a re-
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
-  ], { hmr: true })
+  ], { hmr: true, nativeUpdate: false })
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
     pluginManager: manager,
@@ -545,7 +579,7 @@ test('a failed upgrade restores the previous version', async (t) => {
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-extra', spec: 'dsh-extra@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
-  ], { hmr: true, failInstall: (name, spec) => spec === 'dsh-extra@2.0.0' })
+  ], { hmr: true, nativeUpdate: false, failInstall: (name, spec) => spec === 'dsh-extra@2.0.0' })
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
     pluginManager: manager,
@@ -637,7 +671,7 @@ test('a bundle HMR cannot unload keeps its profile selection and is remembered',
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-stuck', spec: 'dsh-stuck@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
-  ], { hmr: true, stuck: ['dsh-stuck'] })
+  ], { hmr: true, nativeUpdate: false, stuck: ['dsh-stuck'] })
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
     pluginManager: manager,
@@ -670,7 +704,7 @@ test('a remembered bundle is skipped and marked on the next preview', async (t) 
   t.after(() => rm(dir, { recursive: true, force: true }))
   const manager = new FakeManager([
     { name: 'dsh-stuck', spec: 'dsh-stuck@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
-  ], { hmr: true, stuck: ['dsh-stuck'] })
+  ], { hmr: true, nativeUpdate: false, stuck: ['dsh-stuck'] })
   const runtime = createSyncRuntime({
     config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
     pluginManager: manager,
@@ -991,6 +1025,89 @@ test('applyLatest can force the GitHub channel for an npm-spec bundle', async (t
   assert.equal(result.applied[0].spec, 'github:o/pkg#v2.0.0')
   assert.equal(result.applied[0].channel, 'github')
   assert.equal(manager.calls.some((call) => call.spec === 'github:o/pkg#v2.0.0'), true)
+})
+
+test('updating uses the manager update path instead of reinstalling', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }),
+  })
+  await runtime.checkLatest()
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+
+  assert.equal(result.ok, true, JSON.stringify(result.failed))
+  assert.equal(result.applied[0].version, '1.5.0')
+  // The manager's own replace path ran; the install/remove dance did not.
+  assert.equal(manager.calls.some((call) => call.updated === 'pkg' && call.version === '1.5.0'), true)
+  assert.equal(manager.calls.some((call) => call.removed === 'pkg'), false)
+})
+
+test('an update does not re-query the registry after a check', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  let registryReads = 0
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async (url) => {
+      if (!url.includes('/repos/') && !url.includes('/releases')) registryReads += 1
+      return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }
+    },
+  })
+  await runtime.checkLatest()
+  const afterCheck = registryReads
+  assert.ok(afterCheck >= 1)
+
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+  assert.equal(result.totalApplied, 1)
+  // Acting on the cached check must not hit the registry again — that re-check is
+  // what made the button look like it only re-ran the scan.
+  assert.equal(registryReads, afterCheck)
+})
+
+test('a failed manager update reports the restore instead of retrying by hand', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true, failUpdate: () => true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }),
+  })
+  await runtime.checkLatest()
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.failed[0].name, 'pkg')
+  // The manager removed then restored; the plugin must still be installed.
+  assert.equal(manager.bundles.find((bundle) => bundle.name === 'pkg').version, '1.0.0')
+  assert.equal(manager.calls.some((call) => call.removed === 'pkg'), false)
 })
 
 test('preview without a Gist id asks for one', async (t) => {
