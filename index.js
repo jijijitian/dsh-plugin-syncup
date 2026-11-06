@@ -228,7 +228,32 @@ export function apply(ctx, rawConfig) {
 
   registerApiRoutes({ ctx, runtime, config })
 
-  ctx.effect(() => ctx.tools.register({
+  // A leftover row for a previous package id can register `plugin_sync` first,
+  // which makes this whole bundle fail to load ("tool is already registered").
+  // Registering conditionally keeps the settings page and the HTTP API working,
+  // and says what to fix instead of dying silently.
+  const toolAlreadyTaken = () => {
+    try {
+      const registry = ctx.get('tools')
+      const list = registry?.list?.()
+      if (!Array.isArray(list)) return false
+      return list.some((tool) => (tool?.name ?? tool) === 'plugin_sync')
+    } catch {
+      return false
+    }
+  }
+
+  ctx.effect(() => {
+    if (toolAlreadyTaken()) {
+      ctx.logger?.warn?.(
+        'plugin-syncup: "plugin_sync" is already registered by another entry, so this plugin '
+        + 'skipped its own tool. This normally means a row for the pre-rename id (dsh-plugin-sync) '
+        + 'is still in the profile cordis.patch.yml; remove that row and restart DSH. '
+        + 'The settings page and the HTTP API keep working.',
+      )
+      return () => {}
+    }
+    return ctx.tools.register({
     name: 'plugin_sync',
     description:
       'Preview and apply a GitHub Gist plugin manifest. Manual only: no background sync. '
@@ -344,7 +369,8 @@ export function apply(ctx, rawConfig) {
         }
       }
     },
-  }), 'plugin-sync: tool')
+  })
+    }, 'plugin-sync: tool')
 
   if (config.configError !== undefined) {
     runtime.log('warn', config.configError)
