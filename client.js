@@ -447,7 +447,38 @@ window.__ModuleLoader__.load({
     const TOKEN_URL = 'https://github.com/settings/tokens/new?description=DSH%20Plugin%20Sync&scopes=gist'
 
     function endpoint(name) {
-      return new URL(`dsh-plugin-syncup/api/v2/${name}`, document.baseURI).pathname
+      // Keep the query string: `.pathname` alone dropped `?cached=1`, so the
+      // cached restore below became a hidden full check (14 lookups, ~19s) that
+      // held the operation lock. The user's own click then failed with "another
+      // operation is running" and its result was discarded — exactly the
+      // "check finished but no update options appeared" report.
+      const url = new URL(`dsh-plugin-syncup/api/v2/${name}`, document.baseURI)
+      return `${url.pathname}${url.search}`
+    }
+
+    /**
+     * Fill in the summary counts a renderer needs when a payload omits them.
+     *
+     * The list is rendered from `latest.counts.*`, so a partial payload without
+     * `counts` threw inside the render and blanked the whole tab.
+     */
+    function withLatestCounts(data) {
+      const entries = Array.isArray(data?.entries) ? data.entries : []
+      const counts = data?.counts
+      if (counts !== undefined && counts !== null && typeof counts.entries === 'number') return data
+      const outdated = entries.filter((entry) => entry.outdated === true).length
+      const unsupported = entries.filter((entry) => entry.error === 'unsupported').length
+      return {
+        ...data,
+        entries,
+        counts: {
+          entries: entries.length,
+          outdated,
+          current: entries.length - outdated - unsupported,
+          unsupported,
+          failed: 0,
+        },
+      }
     }
 
     async function call(name, { method = 'GET', body } = {}) {
@@ -556,6 +587,9 @@ window.__ModuleLoader__.load({
       // Which flags belong to a request this page started, so the job-adoption
       // effect cannot clear them mid-flight (see the effect below).
       const pendingRef = React.useRef({ check: false, update: false })
+      // One-shot guard: the status refresh a failed check/update fires in its own
+      // `finally` must not clear the error that same request just recorded.
+      const keepErrorRef = React.useRef(false)
       const [latestMessage, setLatestMessage] = React.useState(null)
       const [latestApplied, setLatestApplied] = React.useState(null)
       const [latestChannel, setLatestChannel] = React.useState({})
@@ -582,7 +616,11 @@ window.__ModuleLoader__.load({
 
       const loadStatus = React.useCallback(async () => {
         setLoading(true)
-        setError(null)
+        // Consume the guard instead of clearing a just-failed action's error:
+        // before this, the failure was set and then wiped a tick later, so the
+        // tab silently stayed on "no results yet" with no explanation.
+        if (keepErrorRef.current) keepErrorRef.current = false
+        else setError(null)
         try {
           const data = await call('status')
           setStatus(data)
@@ -615,8 +653,11 @@ window.__ModuleLoader__.load({
         restoredRef.current = true
         void (async () => {
           try {
-            const data = await call('latest?cached=1')
-            if (data.cached !== true) return
+            // Trust the payload by its shape, not by the `cached` flag: rejecting
+            // anything without the flag is what left the tab empty when this call
+            // reached the full-check route instead of the cached one.
+            const data = withLatestCounts(await call('latest?cached=1'))
+            if (data.entries.length === 0) return
             // A check that finished first wins; the cached copy is only a fallback.
             setLatest((current) => (current === null ? data : current))
             setLatestPicked((current) => {
@@ -743,13 +784,32 @@ window.__ModuleLoader__.load({
         void pollJob()
         try {
           const data = await call('latest')
-          setLatest(data)
+          setLatest(withLatestCounts(data))
           const picked = {}
           for (const entry of data.entries) {
             if (entry.outdated === true) picked[entry.name] = true
           }
           setLatestPicked(picked)
         } catch (failure) {
+          // A check can fail or time out: 14 registry lookups take ~19s. Showing
+          // only "no results yet" hid both the failure and the rows the user came
+          // for, so fall back to the last cached result before reporting it.
+          try {
+            const cached = await call('latest?cached=1')
+            if (cached?.cached === true && Array.isArray(cached.entries) && cached.entries.length > 0) {
+              const payload = withLatestCounts(cached)
+              setLatest(payload)
+              const picked = {}
+              for (const entry of payload.entries) {
+                if (entry.outdated === true) picked[entry.name] = true
+              }
+              setLatestPicked(picked)
+            }
+          } catch {
+            // No cached fallback either; the error below is then the only signal.
+          }
+          // Keep this error alive through the `loadStatus` below, which clears it.
+          keepErrorRef.current = true
           setError(t('actionFailed', { message: failure.message }))
         } finally {
           pendingRef.current.check = false
@@ -782,10 +842,51 @@ window.__ModuleLoader__.load({
             ? t('latestDone', { count: data.totalApplied })
             : t('applyPartial', { failed: data.failed.length }))
           setLatestApplied(data)
-          setLatest(null)
-          setLatestPicked({})
-          setLatestChannel({})
+          // Update the rows in place instead of clearing the list: the checkboxes
+          // and version labels must show the state after the run, not an empty
+          // panel. Updated rows become current; failed rows stay selectable.
+          const updated = new Map((data.updatedList ?? []).map((item) => [item.name, item]))
+          const failedNames = new Set((data.failed ?? []).map((item) => item.name))
+          setLatest((current) => {
+            if (current === null) return current
+            const entries = current.entries.map((entry) => {
+              const done = updated.get(entry.name)
+              if (done === undefined) return entry
+              const version = typeof done.version === 'string' && done.version !== ''
+                ? done.version
+                : (done.latest ?? entry.local?.version ?? '')
+              return { ...entry, local: { ...entry.local, version }, outdated: false, updatedTo: version }
+            })
+            const outdated = entries.filter((entry) => entry.outdated === true).length
+            const unsupported = entries.filter((entry) => entry.error === 'unsupported').length
+            return {
+              ...current,
+              entries,
+              counts: {
+                ...current.counts,
+                outdated,
+                current: entries.length - outdated - unsupported,
+              },
+            }
+          })
+          // Only keep selections for rows that still need work.
+          setLatestPicked((currentPick) => {
+            const next = {}
+            for (const [name, picked] of Object.entries(currentPick)) {
+              if (picked === true && !updated.has(name) && failedNames.has(name)) next[name] = true
+            }
+            return next
+          })
+          setLatestChannel((currentChannel) => {
+            const next = {}
+            for (const [name, value] of Object.entries(currentChannel)) {
+              if (!updated.has(name)) next[name] = value
+            }
+            return next
+          })
         } catch (failure) {
+          // Same guard as a failed check: the `loadStatus` in `finally` clears it.
+          keepErrorRef.current = true
           setError(t('actionFailed', { message: failure.message }))
         } finally {
           pendingRef.current.update = false
@@ -1009,7 +1110,7 @@ window.__ModuleLoader__.load({
               disabled: checking || latestUpdating || hostBusy,
               onClick: () => { void checkLatest() },
             }, checking ? t('latestChecking') : t('latestCheck')),
-            latest === null || latest.entries.length === 0 ? null : h(React.Fragment, null,
+            latest === null || !Array.isArray(latest.entries) || latest.entries.length === 0 ? null : h(React.Fragment, null,
               h('button', {
                 type: 'button',
                 className: 'dsh-ps-btn',

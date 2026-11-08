@@ -108,5 +108,17 @@ test('hostBusy requires a live job so a finished check does not dead-lock the bu
 
 test('a finished check is not overwritten by the cached restore', () => {
   // Restoring must yield to a result the user already received.
-  assert.match(source, /setLatest\(\(current\) => \(current === null \? data : current\)\)/)
+  //
+  // This used to pin the exact expression `setLatest((current) => (current === null
+  // ? data : current))`, which forced the implementation to keep one literal
+  // spelling and said nothing about behaviour. Assert the shape that matters
+  // instead: the restore hands `setLatest` an updater (so it can see the current
+  // value) and it keeps an existing result rather than replacing it.
+  const restore = source.slice(
+    source.indexOf('const restoredRef = React.useRef(false)'),
+    source.indexOf('}, [status, call])'),
+  )
+  assert.ok(restore.length > 0, 'the cached-restore effect is present')
+  assert.match(restore, /setLatest\(\(current\) =>/, 'the restore uses an updater so it can see the current result')
+  assert.match(restore, /current === null \? data : current/, 'the cached copy only fills an empty slot')
 })

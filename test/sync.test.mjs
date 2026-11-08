@@ -1053,6 +1053,75 @@ test('updating uses the manager update path instead of reinstalling', async (t) 
   assert.equal(manager.calls.some((call) => call.removed === 'pkg'), false)
 })
 
+test('an update refreshes the cached rows so the page shows the new state', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'other', spec: 'other@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }),
+  })
+  const before = await runtime.checkLatest()
+  const pkgBefore = before.entries.find((entry) => entry.name === 'pkg')
+  assert.equal(pkgBefore.outdated, true)
+  assert.equal(pkgBefore.local.version, '1.0.0')
+
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+  assert.equal(result.totalApplied, 1)
+  assert.equal(result.updatedList.length, 1)
+  assert.equal(result.updatedList[0].name, 'pkg')
+  assert.equal(result.updatedList[0].version, '1.5.0')
+
+  // The cached check must now describe the post-update reality: the updated row
+  // is current at its new version, and the untouched row is unchanged.
+  const cached = runtime.cachedLatest()
+  const pkgAfter = cached.entries.find((entry) => entry.name === 'pkg')
+  assert.equal(pkgAfter.local.version, '1.5.0')
+  assert.equal(pkgAfter.outdated, false)
+  assert.equal(pkgAfter.updatedTo, '1.5.0')
+  const otherAfter = cached.entries.find((entry) => entry.name === 'other')
+  assert.equal(otherAfter.local.version, '1.0.0')
+  assert.equal(otherAfter.outdated, true)
+  assert.equal(cached.counts.outdated, 1)
+})
+
+test('a failed update keeps the row outdated and selectable', async (t) => {
+  const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ], { hmr: true, failUpdate: () => true })
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '1.5.0' } }) }),
+  })
+  await runtime.checkLatest()
+  const result = await runtime.applyLatest(['pkg'], { channels: { pkg: 'npm' } })
+  assert.equal(result.totalApplied, 0)
+  assert.equal(result.updatedList.length, 0)
+
+  const cached = runtime.cachedLatest()
+  const pkgAfter = cached.entries.find((entry) => entry.name === 'pkg')
+  // Nothing changed on disk, so the row must still read as outdated.
+  assert.equal(pkgAfter.local.version, '1.0.0')
+  assert.equal(pkgAfter.outdated, true)
+})
+
 test('an update does not re-query the registry after a check', async (t) => {
   const mock = await startMock({ schemaVersion: 1, hosts: { remote: { bundles: [] } } })
   t.after(() => mock.close())
