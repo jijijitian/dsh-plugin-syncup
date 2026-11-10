@@ -20,9 +20,26 @@
 
 ## 安装
 
+推荐从 npm 安装（已发布的预构建产物）：
+
+```text
+plugin_manager action=install_bundle target=dsh-plugin-syncup
+```
+
+需要固定版本时写成 `target=dsh-plugin-syncup@<版本号>`。
+
+也可以直接从 GitHub 仓库安装源码：
+
 ```text
 plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-syncup
 ```
+
+两种方式装的是同一个插件，区别只在来源：
+
+| 安装方式 | 来源 | 差别 |
+| --- | --- | --- |
+| `dsh-plugin-syncup`（npm，推荐） | npm registry 上已发布的包 | 装到的是发布时的预构建产物（`lib/` 等文件随包发布），安装时不需要构建，也不会要求批准构建脚本；版本以 npm 发布版本为准 |
+| `github:jijijitian/dsh-plugin-syncup` | GitHub 仓库默认分支的源码 | 直接按仓库源码安装，版本跟随仓库而不是 npm 发布版本，仓库里尚未发版的提交也会被装上 |
 
 安装后打开 **插件 → 已安装插件 → dsh-plugin-syncup**，即可看到配置与手动同步面板。每台主机都需要先安装一次本插件；它不会自动安装自己。
 

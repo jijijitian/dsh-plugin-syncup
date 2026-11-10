@@ -12,9 +12,26 @@ Targets DSH `0.2.1-rc.3` and registers `plugins.bundle.config`, which places the
 
 ## Install
 
+Install from npm (the published, prebuilt package) — recommended:
+
+```text
+plugin_manager action=install_bundle target=dsh-plugin-syncup
+```
+
+Pin a version with `target=dsh-plugin-syncup@<version>`.
+
+The GitHub repository remains available as an alternative:
+
 ```text
 plugin_manager action=install_bundle target=github:jijijitian/dsh-plugin-syncup
 ```
+
+Both install the same plugin; only the source differs:
+
+| Method | Source | Difference |
+| --- | --- | --- |
+| `dsh-plugin-syncup` (npm, recommended) | The package published on the npm registry | Installs the prebuilt artifact shipped at publish time (including `lib/`), so nothing is built during installation and no build-script approval is requested; the version is whatever npm publishes |
+| `github:jijijitian/dsh-plugin-syncup` | The default-branch source of the GitHub repository | Installs straight from the repository source, so the version follows the repository rather than the npm release and commits not yet published are included |
 
 ## Use
 
