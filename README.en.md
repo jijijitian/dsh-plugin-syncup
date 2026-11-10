@@ -1,4 +1,16 @@
-# dsh-plugin-syncup
+<div align="center">
+
+# <img src="icon.svg" alt="dsh-plugin-syncup" width="72" height="72"><br>dsh-plugin-syncup
+
+**Sync DSH plugin inventories across machines through a private GitHub Gist, and update every plugin to its newest release.**
+
+[中文](README.md) · [English](README.en.md)
+
+</div>
+
+---
+
+## Overview
 
 Manual plugin-inventory sync for DeepSeek Harness (DSH) through a private **GitHub Gist**. Configure it inside the plugin page, pull the Gist, review changes and conflicts, then install only what you select.
 

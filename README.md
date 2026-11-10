@@ -1,4 +1,14 @@
-# dsh-plugin-syncup
+<div align="center">
+
+# <img src="icon.svg" alt="dsh-plugin-syncup" width="72" height="72"><br>dsh-plugin-syncup
+
+**通过私有 GitHub Gist 在多台主机之间同步 DSH 插件清单，并把插件更新到最新发布版。**
+
+[中文](README.md) · [English](README.en.md)
+
+</div>
+
+---
 
 通过一个私有 **GitHub Gist** 在不同主机之间同步 DeepSeek Harness（DSH）的插件清单：
 
