@@ -25,7 +25,7 @@
 ### 1. 改版本号
 
 ```bash
-cd <dsh-home>/Documents/deepseek-harness/default-workspace/dsh-plugin-sync
+cd <repo checkout>   # the directory holding this package.json
 # 编辑 package.json 的 "version"
 node -e "console.log(require('./package.json').version)"
 ```
@@ -33,7 +33,7 @@ node -e "console.log(require('./package.json').version)"
 - 先确认这个版本号在 npm 上**还没有被占用**（见「坑 2」）：
 
 ```bash
-node "<dsh-home>/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/pnpm/bin/pnpm.cjs" view dsh-plugin-syncup versions --json
+node "$PNPM" view dsh-plugin-syncup versions --json
 ```
 
 - 版本号必须比 registry 上现有的所有版本都大（semver 不允许重发同号）。
@@ -41,7 +41,7 @@ node "<dsh-home>/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/pnpm/bin/pnp
 ### 2. 跑测试
 
 ```bash
-export PATH="<dsh-home>/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH"
+export PATH="<dsh home>/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin:$PATH"
 node --test
 ```
 
@@ -72,7 +72,7 @@ git ls-remote --tags origin | grep "vX.Y.Z"
 **打出来的 tarball 才是要发布的东西**，源码目录不是。发布前必须亲眼看一眼包里有什么：
 
 ```bash
-export PNPM="<dsh-home>/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/pnpm/bin/pnpm.cjs"
+export PNPM="<dsh home>/dsh-runtimes/dsh-primary-runtime/dependencies/pnpm/bin/pnpm.cjs"
 node "$PNPM" pack --pack-destination "$(cygpath -w /tmp)"
 
 # 列出内容并核对
