@@ -89,6 +89,45 @@ test('identical bundles are reported as same', () => {
   assert.equal(plan.counts.same, 1)
 })
 
+test('a bundle this host already publishes is same, not local-only', () => {
+  const manifest = manifestWith({
+    self: host('self', [{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', enabled: true }]),
+  })
+  const plan = buildPushPlan({
+    manifest,
+    hostEntry: localEntry([{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', enabled: true }]),
+    hostId: 'self',
+  })
+  assert.equal(plan.entries[0].kind, 'same')
+  assert.equal(plan.counts.localOnly, 0)
+  assert.equal(plan.counts.conflict, 0)
+})
+
+test('another host lagging behind is not reported as an unsent change', () => {
+  const manifest = manifestWith({
+    self: host('self', [{ name: 'pkg', spec: 'pkg@2.0.0', version: '2.0.0', enabled: true }]),
+    other: host('other', [{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', enabled: true }]),
+  })
+  const plan = buildPushPlan({
+    manifest,
+    hostEntry: localEntry([{ name: 'pkg', spec: 'pkg@2.0.0', version: '2.0.0', enabled: true }]),
+    hostId: 'self',
+  })
+  assert.equal(plan.entries[0].kind, 'same')
+  assert.equal(plan.counts.conflict, 0)
+})
+
+test('a version change on a published bundle is still planned', () => {
+  const manifest = manifestWith({
+    self: host('self', [{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0', enabled: true }]),
+  })
+  const hostEntry = localEntry([{ name: 'pkg', spec: 'pkg@1.1.0', version: '1.1.0', enabled: true }])
+  const plan = buildPushPlan({ manifest, hostEntry, hostId: 'self' })
+  assert.equal(plan.entries[0].kind, 'local-only')
+  const applied = applyPushPlan({ manifest, hostEntry, hostId: 'self', plan })
+  assert.equal(applied.manifest.hosts.self.bundles[0].version, '1.1.0')
+})
+
 test('the local host record is excluded from the remote comparison', () => {
   const manifest = manifestWith({
     self: host('self', [{ name: 'pkg', spec: 'pkg@9.0.0', version: '9.0.0', enabled: true }]),
