@@ -442,6 +442,53 @@ test('push updates an existing Gist and skips unchanged content', async (t) => {
   assert.equal(mock.writes(), 1)
 })
 
+test('a plan push that changes no inventory reports unchanged and writes nothing', async (t) => {
+  const mock = await startMock({
+    schemaVersion: 1,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    hosts: {
+      'host-a': {
+        hostId: 'host-a',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bundles: [{ name: 'dsh-shared', spec: 'dsh-shared@1.0.0', version: '1.0.0', enabled: true }],
+      },
+      'host-local': {
+        hostId: 'host-local',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        profile: 'desktop',
+        platform: process.platform,
+        bundles: [
+          { name: 'dsh-local', spec: 'dsh-local@1.0.0', version: '1.0.0', enabled: true },
+          { name: 'dsh-shared', spec: 'dsh-shared@1.0.0', version: '1.0.0', enabled: true },
+        ],
+      },
+    },
+  })
+  t.after(() => mock.close())
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-plugin-syncup-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const manager = new FakeManager([
+    { name: 'dsh-local', spec: 'dsh-local@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+    { name: 'dsh-shared', spec: 'dsh-shared@1.0.0', version: '1.0.0', availability: 'profile', installed: true, enabled: true, removable: true },
+  ])
+  const runtime = createSyncRuntime({
+    config: makeConfig({ apiBaseUrl: mock.apiBaseUrl }),
+    pluginManager: manager,
+    logger: { info() {}, warn() {} },
+    statePath: join(dir, 'state.json'),
+    env: {},
+  })
+  const plan = await runtime.planPush()
+  // The Gist already holds exactly this inventory, so no row is a difference.
+  assert.equal(plan.counts.same, 2)
+  assert.equal(plan.counts.localOnly, 0)
+  assert.equal(plan.counts.conflict, 0)
+  const result = await runtime.push({ planId: plan.planId, selections: {} })
+  assert.equal(result.status, 'unchanged')
+  assert.equal(mock.writes(), 0)
+  assert.equal(mock.readState().parsed.hosts['host-local'].updatedAt, '2026-01-01T00:00:00.000Z')
+})
+
 test('push with no Gist id creates a secret Gist and remembers it', async (t) => {
   const mock = await startMock(null)
   t.after(() => mock.close())

@@ -5,6 +5,7 @@ import {
   localHostEntry,
   mergeHost,
   normalizeManifest,
+  sameManifestContent,
   summarizeManifest,
 } from '../lib/manifest.js'
 import { compareVersions, isPortableSpec, normalizeRepo } from '../lib/spec.js'
@@ -117,6 +118,48 @@ test('compareVersions handles prereleases', () => {
   assert.ok(compareVersions('1.2.3', '1.2.3-rc.2') > 0)
   assert.ok(compareVersions('1.2.3-rc.2', '1.2.3-rc.1') > 0)
   assert.equal(compareVersions('v1.2.3', '1.2.3'), 0)
+})
+
+test('sameManifestContent ignores publish timestamps and the last writer', () => {
+  const left = normalizeManifest({
+    schemaVersion: 1,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    lastWriter: 'a',
+    hosts: {
+      a: {
+        hostId: 'a',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bundles: [{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0' }],
+      },
+    },
+  })
+  const republished = {
+    ...left,
+    updatedAt: '2026-02-02T00:00:00.000Z',
+    lastWriter: 'a',
+    hosts: { a: { ...left.hosts.a, updatedAt: '2026-02-02T00:00:00.000Z' } },
+  }
+  assert.equal(sameManifestContent(left, republished), true)
+})
+
+test('sameManifestContent still sees inventory changes', () => {
+  const base = normalizeManifest({
+    schemaVersion: 1,
+    hosts: {
+      a: { hostId: 'a', bundles: [{ name: 'pkg', spec: 'pkg@1.0.0', version: '1.0.0' }] },
+      b: { hostId: 'b', bundles: [] },
+    },
+  })
+  const bumped = {
+    ...base,
+    hosts: { ...base.hosts, a: { ...base.hosts.a, bundles: [{ name: 'pkg', spec: 'pkg@1.1.0', version: '1.1.0' }] } },
+  }
+  assert.equal(sameManifestContent(base, bumped), false)
+  const reordered = {
+    ...base,
+    hosts: { b: base.hosts.b, a: base.hosts.a },
+  }
+  assert.equal(sameManifestContent(base, reordered), true)
 })
 
 test('summarizeManifest reports host and bundle counts', () => {
